@@ -62,21 +62,42 @@ let canvasCols: CGFloat = 26
 let canvasRows: CGFloat = 20
 var canvasSize: NSSize { NSSize(width: canvasCols * U, height: canvasRows * U) }
 let bodyX: CGFloat = 7              // where the 12x9 body grid sits inside the canvas
-let bodyY: CGFloat = canvasRows - 9
+let bodyY: CGFloat = canvasRows - 10
 
 // Light and dark themes. `darkTheme` follows the Appearance setting (or macOS when set to Auto).
 var darkTheme = true
 func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor {
     NSColor(srgbRed: r, green: g, blue: b, alpha: a)
 }
-var orange: NSColor { darkTheme ? rgb(0.80, 0.44, 0.32) : rgb(0.85, 0.47, 0.34) }
-var outlineColor: NSColor { darkTheme ? rgb(1, 1, 1, 0.22) : rgb(0, 0, 0, 0.22) }
-let eyeColor = rgb(0.08, 0.08, 0.08)
+/// The pet's colour theme: "Classic" orange (follows light/dark mode), "Charcoal" or "Shadow".
+let themes = ["Classic", "Charcoal", "Shadow"]
+var theme = UserDefaults.standard.string(forKey: "theme") ?? "Classic"
+var orange: NSColor {
+    switch theme {
+    case "Charcoal": return rgb(0.17, 0.17, 0.20)
+    case "Shadow": return rgb(0.07, 0.07, 0.08)
+    default: return darkTheme ? rgb(0.80, 0.44, 0.32) : rgb(0.85, 0.47, 0.34)
+    }
+}
+var outlineColor: NSColor {
+    switch theme {
+    case "Charcoal": return rgb(0.85, 0.47, 0.34, 0.9)      // glowing orange edge
+    case "Shadow": return rgb(0.75, 0.80, 0.90, 0.55)
+    default: return darkTheme ? rgb(1, 1, 1, 0.22) : rgb(0, 0, 0, 0.22)
+    }
+}
+var eyeColor: NSColor {
+    switch theme {
+    case "Charcoal": return rgb(1.0, 0.62, 0.40)
+    case "Shadow": return rgb(0.95, 0.95, 1.0)
+    default: return rgb(0.08, 0.08, 0.08)
+    }
+}
 
 func paletteColor(_ ch: Character) -> NSColor? {
     switch ch {
     case "o": return orange
-    case "k": return eyeColor
+    case "k": return rgb(0.08, 0.08, 0.08)
     case "w": return darkTheme ? .white : rgb(0.55, 0.70, 0.88)
     case "l": return darkTheme ? rgb(0.82, 0.84, 0.88) : rgb(0.42, 0.44, 0.50)
     case "m": return darkTheme ? rgb(0.55, 0.58, 0.65) : rgb(0.48, 0.50, 0.56)
@@ -402,7 +423,7 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         let q = (t / 3) % 4
         p.legs = [0, 0, 0, 0]; p.left = .hidden; p.right = .hidden; p.eyes = .happy
         p.rot = f * CGFloat(q) * .pi / 2
-        p.dy = q % 2 == 0 ? 2 : 0.5
+        p.dy = q % 2 == 0 ? 2 : 1
         fr.vx = 0.6 * f
 
     case .hop:
@@ -487,7 +508,7 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
 
     case .read:
         p.left = .raised; p.right = .raised; p.eyes = .look(0, 1)
-        add(Art.book[t % 40 > 34 ? 1 : 0], 3.25, 4.75)
+        add(Art.book[t % 40 > 34 ? 1 : 0], 3.25, 5.25)
 
     case .sing:
         p.mouth = (t / 6) % 2 == 0 ? .o : .none; p.eyes = .closed
@@ -579,18 +600,18 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         p.eyes = .look(f, 0)
         p.profile = f
         addF(Art.sideGlasses, 6, 2.5)
-        addF(Art.stool, 3, 7)
-        addF(Art.stoolLeg, 5.5, 7.5)
-        addF(Art.deskTop, 11, 5.5)
-        addF(Art.deskLeg, 11.5, 6)
-        addF(Art.deskLeg, 18, 6)
-        addF(Art.laptopSideBase, 12, 5)
-        addF(Art.laptopSideScreen, 15.25, 1)
+        addF(Art.stool, 3, 8)
+        addF(Art.stoolLeg, 5.5, 8.5)
+        addF(Art.deskTop, 11, 6.5)
+        addF(Art.deskLeg, 11.5, 7)
+        addF(Art.deskLeg, 18, 7)
+        addF(Art.laptopSideBase, 12, 6)
+        addF(Art.laptopSideScreen, 15.25, 2)
         let bugTime = cyc >= 84 && cyc < 114
         let glowColors: [Character] = bugTime ? ["r", "r", "r"] : ["g", "b", "y", "p"]
-        addF(Art.screenGlow(glowColors, shift: t / 2), 14.75, 1)
-        addF(Art.mug, 17, 3.5)
-        addF(Art.pixel("l"), 17.75, 3 - CGFloat(t % 12) * 0.2)
+        addF(Art.screenGlow(glowColors, shift: t / 2), 14.75, 2)
+        addF(Art.mug, 17, 4.5)
+        addF(Art.pixel("l"), 17.75, 4 - CGFloat(t % 12) * 0.2)
 
         if cyc < 84 {
             p.front(f, (t / 2) % 2 == 0 ? .punch : .raised)               // typing
@@ -598,21 +619,21 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
             let colors: [Character] = ["g", "b", "y", "p"]
             for k in 0..<3 {
                 let ph = CGFloat((t + k * 8) % 24)
-                addF(Art.pixel(colors[(t / 24 + k) % 4]), 15 - ph * 0.12 + CGFloat(k) * 0.4, 1 - ph * 0.2)
+                addF(Art.pixel(colors[(t / 24 + k) % 4]), 15 - ph * 0.12 + CGFloat(k) * 0.4, 2 - ph * 0.2)
             }
-            if (t / 12) % 4 == 1 { addF(Art.codeTag, 12.5, -2.5 - CGFloat(t % 12) * 0.1) }
+            if (t / 12) % 4 == 1 { addF(Art.codeTag, 12.5, -1.5 - CGFloat(t % 12) * 0.1) }
         } else {
             let bugX = 18.5 - CGFloat(min(cyc, 101) - 84) * 0.25
             if cyc < 102 {
                 p.front(f, .raised); p.eyes = .big
-                addF(Art.bug[(t / 2) % 2], bugX, 4)
+                addF(Art.bug[(t / 2) % 2], bugX, 5)
                 if (t / 6) % 2 == 0 { add(Art.bang, 5.5, -3) }
             } else if cyc < 114 {
                 p.front(f, .up); p.eyes = .closed                          // wind up
-                addF(Art.bug[0], bugX, 4)
+                addF(Art.bug[0], bugX, 5)
             } else if cyc < 120 {
                 p.front(f, .punch); p.dy = 0.5; p.sy = 0.95                // squash!
-                addF(Art.star, bugX - 0.25, 3.5)
+                addF(Art.star, bugX - 0.25, 4.5)
             } else {
                 p.front(f, .raised); p.eyes = .happy
                 add(Art.check, 4.25, -4)
@@ -631,7 +652,7 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
             }
         }
         let puddle = min(16, 4 + t / 8)
-        add([String(repeating: "c", count: puddle)], 6 - CGFloat(puddle) * 0.25, 8.5)
+        add([String(repeating: "c", count: puddle)], 6 - CGFloat(puddle) * 0.25, 9.5)
 
     case .depressed:
         p.sit(); p.sy = 0.9; p.eyes = .sad; p.left = .down; p.right = .down
@@ -690,7 +711,7 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
     case .typing:
         let swap = (t / 2) % 2 == 0
         p.left = swap ? .raised : .out; p.right = swap ? .out : .raised; p.eyes = .look(0, 1)
-        add(Art.laptop[(t / 4) % 2], 3.5, 6)
+        add(Art.laptop[(t / 4) % 2], 3.5, 7)
 
     case .searching:
         // Scans with the magnifier held to its eye, then stops to read a found document.
@@ -747,10 +768,10 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         let cyc = t % 72
         p.left = .raised; p.right = .raised
         let landed = min(3, cyc / 18)
-        for i in 0..<landed { addF(Art.box, 13, 6.5 - CGFloat(i) * 2.5) }
+        for i in 0..<landed { addF(Art.box, 13, 7.5 - CGFloat(i) * 2.5) }
         if landed < 3 {
             let fall = CGFloat(cyc % 18) / 18
-            addF(Art.box, 13, -8 + fall * (14.5 - CGFloat(landed) * 2.5))
+            addF(Art.box, 13, -8 + fall * (15.5 - CGFloat(landed) * 2.5))
             p.eyes = .look(f, -1)
         } else {
             p.eyes = .happy
@@ -760,13 +781,13 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         // Plugs a cable into a socket; it buzzes with power once connected.
         let cyc = t % 36
         p.front(f, .raised); p.eyes = .look(f, 1)
-        addF(Art.socket, 17, 7)
+        addF(Art.socket, 17, 8)
         let plugX = cyc < 12 ? 12 + CGFloat(cyc) * 0.25 : 15
-        addF(Art.plug, plugX, 7.5)
-        for x in stride(from: CGFloat(11), to: plugX, by: 0.5) { addF(Art.pixel("k"), x, 4.5 + (x - 11) * 0.75) }
+        addF(Art.plug, plugX, 8.5)
+        for x in stride(from: CGFloat(11), to: plugX, by: 0.5) { addF(Art.pixel("k"), x, 4.5 + (x - 11)) }
         if cyc >= 12 {
             p.eyes = .big; p.dx = (t / 2) % 2 == 0 ? 0.2 : -0.2
-            if (t / 3) % 2 == 0 { addF(Art.zap, 17.25, 5); addF(Art.zap, 11.5, 1) }
+            if (t / 3) % 2 == 0 { addF(Art.zap, 17.25, 6); addF(Art.zap, 11.5, 1) }
         }
 
     case .delegating:
@@ -777,7 +798,7 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
 
     case .blocked:
         // Walks into a stop sign, bounces back and shakes its head.
-        addF(Art.stopSign, 13, 4)
+        addF(Art.stopSign, 13, 5)
         if t < 10 {
             fr.vx = 0; p.walk(t, every: 2); p.dx = CGFloat(t) * 0.12 * f; p.eyes = .look(f, 0)
         } else if t < 16 {
@@ -797,15 +818,15 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         // Sits and waits next to an hourglass, tapping a foot.
         p.legs = [2, 2, 2, (t / 4) % 2 == 0 ? 1 : 2]; p.eyes = .sad
         p.front(f, .down)
-        addF(Art.hourglass((t / 24) % 4), 13, 3.75, 0.75)
+        addF(Art.hourglass((t / 24) % 4), 13, 4.75, 0.75)
 
     case .building:
         p.eyes = .look(f, 1)
-        addF(Art.brick, 14.5, 8)
+        addF(Art.brick, 14.5, 9)
         if (t / 5) % 2 == 0 {
             p.front(f, .up); addF(Art.hammerUp, 9.5, -2.5)
         } else {
-            p.sy = 0.95; addF(Art.hammerDown, 12, 3.5); addF(Art.star, 14.5, 6.5)
+            p.sy = 0.95; addF(Art.hammerDown, 12, 3.5); addF(Art.star, 14.5, 7.5)
         }
 
     case .browsing:
@@ -833,7 +854,7 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         }
 
     case .dizzy:
-        p.rot = f * .pi / 2; p.dy = -1.5; p.eyes = .dizzy
+        p.rot = f * .pi / 2; p.dy = -1; p.eyes = .dizzy
         for k in 0..<3 {
             let a = tt * 0.3 + CGFloat(k) * 2 * .pi / 3
             add(Art.star, 5.25 + 4 * cos(a), -1 + 1.2 * sin(a))
@@ -889,20 +910,20 @@ func drawEye(_ ctx: CGContext, _ e: Eyes, _ x: CGFloat, _ y: CGFloat) {
     rects.forEach { ctx.fill($0) }
 }
 
-/// Draws the pet in body-grid space: a 12x9 grid with the feet on row 9.
+/// Draws the pet in body-grid space: a 12x10 grid with the feet on row 10.
 func drawBody(_ ctx: CGContext, _ p: Pose, at origin: CGPoint, scale s: CGFloat = 1) {
     ctx.saveGState()
     ctx.translateBy(x: origin.x, y: origin.y)
     ctx.scaleBy(x: s, y: s)
     ctx.translateBy(x: p.dx, y: p.dy)
-    ctx.translateBy(x: 6, y: 9); ctx.scaleBy(x: p.sx, y: p.sy); ctx.translateBy(x: -6, y: -9)
-    ctx.translateBy(x: 6, y: 4.5); ctx.rotate(by: p.rot); ctx.translateBy(x: -6, y: -4.5)
+    ctx.translateBy(x: 6, y: 10); ctx.scaleBy(x: p.sx, y: p.sy); ctx.translateBy(x: -6, y: -10)
+    ctx.translateBy(x: 6, y: 5); ctx.rotate(by: p.rot); ctx.translateBy(x: -6, y: -5)
 
-    var shape = [CGRect(x: 2, y: 2, width: 8, height: 5)]
+    var shape = [CGRect(x: 2, y: 2, width: 8, height: 6)]
     if let r = armRect(p.left) { shape.append(r) }
     if let r = armRect(p.right) { shape.append(CGRect(x: 12 - r.maxX, y: r.minY, width: r.width, height: r.height)) }
     for (i, col) in [2, 4, 7, 9].enumerated() where p.legs[i] > 0 {
-        shape.append(CGRect(x: CGFloat(col), y: 7, width: 1, height: p.legs[i]))
+        shape.append(CGRect(x: CGFloat(col), y: 8, width: 1, height: p.legs[i]))
     }
     // A faint outline keeps the pet visible on wallpapers close to its own colour.
     ctx.setFillColor(outlineColor.cgColor)
@@ -1064,6 +1085,12 @@ final class Pet: NSObject {
     var disabled = Set((UserDefaults.standard.stringArray(forKey: "disabledActions") ?? []).compactMap(Act.init(rawValue:)))
     var settingsWindow: NSWindow?
     var loginCheckbox: NSButton?
+    var themePicker: NSPopUpButton?
+    var timer: Timer?
+    var speed: Double = {
+        let saved = UserDefaults.standard.double(forKey: "speed")
+        return saved > 0 ? saved : 1
+    }()
     var updateCheckbox: NSButton?
     var availableUpdate: (version: String, zip: URL)?
     var updating = false
@@ -1084,8 +1111,9 @@ final class Pet: NSObject {
            UserDefaults.standard.string(forKey: "lastWalkArea") == nil {
             UserDefaults.standard.set(area, forKey: "lastWalkArea")
         }
+        // U starts at 8 for the README images; the pet itself defaults to the second step of the size slider.
         let savedSize = UserDefaults.standard.double(forKey: "size")
-        if savedSize > 0 { U = CGFloat(savedSize) }
+        U = savedSize > 0 ? CGFloat(savedSize) : 4
         window = NSWindow(contentRect: NSRect(origin: .zero, size: canvasSize),
                           styleMask: .borderless, backing: .buffered, defer: false)
         super.init()
@@ -1125,7 +1153,7 @@ final class Pet: NSObject {
         // Look for a new release shortly after launch, then once a day.
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in self?.autoCheckForUpdates() }
         Timer.scheduledTimer(withTimeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in self?.autoCheckForUpdates() }
-        Timer.scheduledTimer(withTimeInterval: 1.0 / 12.0, repeats: true) { [weak self] _ in self?.step() }
+        startTimer()
     }
 
     // MARK: Menu
@@ -1134,7 +1162,7 @@ final class Pet: NSObject {
     func menuBarIcon() -> NSImage {
         let img = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
             let s: CGFloat = 1.5
-            let rows = ["..########..", "..#.####.#..", "############", "############",
+            let rows = ["..########..", "..#.####.#..", "############", "############", "..########..",
                         "..########..", "..#.#..#.#..", "..#.#..#.#.."]
             let top = (18 - CGFloat(rows.count) * s) / 2
             NSColor.black.setFill()
@@ -1188,6 +1216,11 @@ final class Pet: NSObject {
         let areaItem = NSMenuItem(title: "Walking Area", action: nil, keyEquivalent: "")
         areaItem.submenu = area
         menu.addItem(areaItem)
+        let themeMenu = NSMenu()
+        for name in themes { item(name, #selector(themeChanged(_:)), in: themeMenu) }
+        let themeItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
+        themeItem.submenu = themeMenu
+        menu.addItem(themeItem)
         menu.addItem(.separator())
 
         item("React to Claude", #selector(toggleReact(_:)), in: menu)
@@ -1233,6 +1266,7 @@ final class Pet: NSObject {
         let outdated = needsUpdate()
         func allItems(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(allItems) ?? []) } }
         loginCheckbox?.state = startsAtLogin ? .on : .off
+        themePicker?.selectItem(withTitle: theme)
         for menu in menus {
             for item in allItems(menu) {
                 switch item.action {
@@ -1242,6 +1276,7 @@ final class Pet: NSObject {
                 case #selector(useCustomArea):
                     item.state = walkArea == nil ? .off : .on
                 case #selector(toggleLogin): item.state = startsAtLogin ? .on : .off
+                case #selector(themeChanged(_:)): item.state = item.title == theme ? .on : .off
                 case #selector(updateMenuClicked):
                     item.title = updating ? "Updating…" : availableUpdate.map { "Update to v\($0.version)…" } ?? "Check for Updates…"
                 case #selector(toggleVisible): item.title = window.isVisible ? "Hide Pet" : "Show Pet"
@@ -1362,6 +1397,12 @@ final class Pet: NSObject {
         slider.widthAnchor.constraint(equalToConstant: 260).isActive = true
         let sizeRow = NSStackView(views: [NSTextField(labelWithString: "Small"), slider, NSTextField(labelWithString: "Big")])
 
+        let speedSlider = NSSlider(value: speed, minValue: 0.5, maxValue: 2, target: self, action: #selector(speedChanged(_:)))
+        speedSlider.numberOfTickMarks = 7
+        speedSlider.allowsTickMarkValuesOnly = true
+        speedSlider.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        let speedRow = NSStackView(views: [NSTextField(labelWithString: "Slower"), speedSlider, NSTextField(labelWithString: "Faster")])
+
         checkboxes = Act.freePlay.enumerated().map { i, a in
             let box = NSButton(checkboxWithTitle: a.title, target: self, action: #selector(actionToggled(_:)))
             box.tag = i
@@ -1403,7 +1444,20 @@ final class Pet: NSObject {
         let themeHint = NSTextField(labelWithString: "Auto follows your Mac's light or dark mode.")
         themeHint.font = .systemFont(ofSize: 11)
         themeHint.textColor = .secondaryLabelColor
-        let themeRow = NSStackView(views: [themePopup, themeHint])
+        let themePicker = NSPopUpButton(frame: .zero, pullsDown: false)
+        themePicker.addItems(withTitles: themes)
+        themePicker.selectItem(withTitle: theme)
+        themePicker.target = self
+        themePicker.action = #selector(themeChanged(_:))
+        self.themePicker = themePicker
+        let pickerHint = NSTextField(labelWithString: "Classic orange, Charcoal with an orange glow, or a Shadow silhouette.")
+        pickerHint.font = .systemFont(ofSize: 11)
+        pickerHint.textColor = .secondaryLabelColor
+        let pickerRow = NSStackView(views: [NSTextField(labelWithString: "Theme:"), themePicker, pickerHint])
+        let themeRow = NSStackView(views: [NSTextField(labelWithString: "Light / Dark:"), themePopup, themeHint])
+        let themeBlock = NSStackView(views: [pickerRow, themeRow])
+        themeBlock.orientation = .vertical
+        themeBlock.alignment = .leading
 
         let areaLabel = NSTextField(labelWithString: "")
         areaLabel.font = .systemFont(ofSize: 11)
@@ -1427,14 +1481,15 @@ final class Pet: NSObject {
         version.textColor = .secondaryLabelColor
         let updateRow = NSStackView(views: [autoUpdate, NSButton(title: "Check Now", target: self, action: #selector(checkNow)), version])
 
-        let stack = NSStackView(views: [login, updateRow, heading("Size"), sizeRow, heading("Appearance"), themeRow,
+        let stack = NSStackView(views: [login, updateRow, heading("Size"), sizeRow, heading("Speed"), speedRow, heading("Appearance"), themeBlock,
                                         heading("Where it walks"), areaRow, heading("Actions it does on its own"), grid, buttons, hint])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 12
         stack.setCustomSpacing(24, after: updateRow)
         stack.setCustomSpacing(24, after: sizeRow)
-        stack.setCustomSpacing(24, after: themeRow)
+        stack.setCustomSpacing(24, after: speedRow)
+        stack.setCustomSpacing(24, after: themeBlock)
         stack.setCustomSpacing(24, after: areaRow)
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         w.contentView = stack
@@ -1662,9 +1717,28 @@ final class Pet: NSObject {
         window.setFrameOrigin(NSPoint(x: posX, y: area.minY))
     }
 
+    @objc func themeChanged(_ sender: NSObject) {
+        if let popup = sender as? NSPopUpButton { theme = popup.titleOfSelectedItem ?? "Classic" }
+        if let item = sender as? NSMenuItem { theme = item.title }
+        UserDefaults.standard.set(theme, forKey: "theme")
+        refreshMenus()
+    }
+
     @objc func appearanceChanged(_ sender: NSPopUpButton) {
         appearance = sender.titleOfSelectedItem ?? "Auto"
         UserDefaults.standard.set(appearance, forKey: "appearance")
+    }
+
+    /// Runs the animation at 12 frames per second, scaled by the speed setting.
+    func startTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / (12.0 * speed), repeats: true) { [weak self] _ in self?.step() }
+    }
+
+    @objc func speedChanged(_ sender: NSSlider) {
+        speed = (sender.doubleValue * 4).rounded() / 4
+        UserDefaults.standard.set(speed, forKey: "speed")
+        startTimer()
     }
 
     @objc func sizeChanged(_ sender: NSSlider) {
@@ -1865,7 +1939,7 @@ final class Pet: NSObject {
             p.walk(tick + i * 3, every: 3)
             p.eyes = .look(i == 0 ? 1 : -1, 0)
             p.dy = (tick / 6 + i) % 2 == 0 ? 0 : -1
-            return (p, CGPoint(x: i == 0 ? -6.5 : 12.5, y: 4.5))
+            return (p, CGPoint(x: i == 0 ? -6.5 : 12.5, y: 5))
         }
 
         if !dragging { move(fr) }
@@ -1957,7 +2031,7 @@ if let path = argument(after: "--icon") {
         ctx.setFillColor(rgb(0.13, 0.13, 0.15).cgColor)
         ctx.fillPath()
         ctx.setShouldAntialias(false)
-        ctx.translateBy(x: 512 - 6 * 52, y: 512 - 5.5 * 52)
+        ctx.translateBy(x: 512 - 6 * 52, y: 512 - 6 * 52)
         ctx.scaleBy(x: 52, y: 52)
         var pose = Pose()
         pose.eyes = .happy

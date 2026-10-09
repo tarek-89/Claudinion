@@ -41,7 +41,7 @@
 - 🧡 **Lives on your desktop.** It walks along the bottom of your screen (or an area you choose), stays on top of other windows and shows up on every Space.
 - 🤖 **Reacts to Claude Code in real time.** It uses [Claude Code hooks](https://code.claude.com/docs/en/hooks), so it works in the terminal and in the Claude desktop app's Code tab.
 - 🎲 **Has 29 idle actions** in 6 categories, and you choose which ones it may do.
-- 🎛️ **Is easy to adjust.** Change its size, pick light or dark style (or follow macOS), set where it walks, and hide it from the menu bar.
+- 🎛️ **Is easy to adjust.** Pick a theme (Classic orange, Charcoal with an orange glow, or a Shadow silhouette), change its size and speed, follow macOS light/dark mode, set where it walks, and hide it from the menu bar.
 - 🪶 **Is tiny and private.** It's a single Swift file with no dependencies. It only ever sees the *names* of Claude's events and tools, and its only network request is the update check to GitHub, which you can turn off.
 
 <p align="center">
@@ -148,11 +148,12 @@ Add this to the `hooks` section of `~/.claude/settings.json`. Repeat it for each
 | **Hide / Show** | Hides the minion without quitting it |
 | **Play ▸** | Starts any action now, including previews of every Claude reaction |
 | **Stay in Place** | It still animates, but stops walking around |
+| **Theme ▸** | **Classic** (orange, the default), **Charcoal** (dark with an orange glow) or **Shadow** (a dark silhouette) |
 | **Walking Area ▸** | **Anywhere** (the bottom of the screen), or **Draw New Area…**: drag a rectangle and it walks along that rectangle's bottom edge |
 | **React to Claude** | Pauses or resumes Claude reactions |
 | **Connect / Update / Disconnect from Claude…** | Adds, refreshes or removes the hooks |
 | **Start at Login** | Opens Claudinion automatically after you restart or log in |
-| **Settings…** | Size, appearance, walking area, update checks, and which actions it does on its own |
+| **Settings…** | Theme, size, speed, light/dark, walking area, update checks, and which actions it does on its own |
 | **Check for Updates… / Update to vX.Y.Z…** | Checks GitHub for a new version, or installs one that's available |
 
 Your settings (size, appearance, walking area, chosen actions) are saved and come back every time it starts.
