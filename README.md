@@ -42,7 +42,7 @@
 - 🤖 **Reacts to Claude Code in real time.** It uses [Claude Code hooks](https://code.claude.com/docs/en/hooks), so it works in the terminal and in the Claude desktop app's Code tab.
 - 🎲 **Has 29 idle actions** in 6 categories, and you choose which ones it may do.
 - 🎛️ **Is easy to adjust.** Change its size, pick light or dark style (or follow macOS), set where it walks, and hide it from the menu bar.
-- 🪶 **Is tiny and private.** It's a single Swift file with no dependencies and no network access. It only ever sees the *names* of Claude's events and tools.
+- 🪶 **Is tiny and private.** It's a single Swift file with no dependencies. It only ever sees the *names* of Claude's events and tools, and its only network request is the update check to GitHub, which you can turn off.
 
 <p align="center">
   <img src="docs/actions.png" alt="All 29 idle actions">
@@ -50,13 +50,23 @@
 
 ## Install
 
-You'll need **macOS 14 (Sonoma) or later** and the **Xcode Command Line Tools**. If you don't have the Command Line Tools yet, run:
+Claudinion needs **macOS 14 (Sonoma) or later**, on an Apple silicon or Intel Mac.
 
-```bash
-xcode-select --install
-```
+### Option 1: Download (easiest)
 
-Then build and install:
+1. Download **`Claudinion.zip`** from the [latest release](https://github.com/tarek-89/Claudinion/releases/latest).
+2. Unzip it and move **Claudinion.app** into **Applications**, or into the Applications folder in your home folder.
+3. Claudinion isn't signed with a paid Apple Developer ID, so macOS blocks it the first time. Clear that once in Terminal (adjust the path if you put the app elsewhere):
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Claudinion.app
+   ```
+
+4. Open Claudinion.
+
+### Option 2: Build from source
+
+You'll need the **Xcode Command Line Tools**. If you don't have them yet, run `xcode-select --install`. Then:
 
 ```bash
 git clone https://github.com/tarek-89/Claudinion.git
@@ -64,12 +74,20 @@ cd Claudinion
 ./build.sh --install
 ```
 
-This builds a universal app (Apple silicon and Intel), copies it to `~/Applications/Claudinion.app` and starts it. Your minion pops up at the bottom of the screen, and a small pixel icon appears in the menu bar.
+This builds a universal app, copies it to `~/Applications/Claudinion.app` and starts it. If you only want to build it, run `./build.sh` and the app appears in `build/Claudinion.app`.
+
+Either way, your minion pops up at the bottom of the screen, and a small pixel icon appears in the menu bar.
 
 > [!TIP]
-> To start Claudinion every time you log in, add it under **System Settings → General → Login Items**.
+> To start Claudinion automatically whenever you log in, tick **Start at Login** in its menu.
 
-If you only want to build it without installing, run `./build.sh` and the app appears in `build/Claudinion.app`.
+### Updating
+
+Claudinion checks GitHub for a new release once at launch and then once a day. When one is out, the menu shows **Update to vX.Y.Z…**. Click it and Claudinion downloads the new version, replaces itself and restarts. Your settings and Claude connection are kept.
+
+- To check right away, choose **Check for Updates…**.
+- To turn off automatic checks, untick **Check for updates automatically** in **Settings…**.
+- If you built from source, you can also update with `git pull && ./build.sh --install`.
 
 ## Connect it to Claude Code
 
@@ -85,6 +103,8 @@ Claudinion plays on its own straight away. To make it react to Claude:
 - It doesn't touch any hooks you already have.
 
 To undo it, choose **Disconnect from Claude…**. That removes only Claudinion's hooks.
+
+If a newer version of Claudinion uses extra events, the menu shows **Update Claude Connection…** instead. One click brings your hooks up to date.
 
 <details>
 <summary>Prefer to edit the settings by hand?</summary>
@@ -130,10 +150,12 @@ Add this to the `hooks` section of `~/.claude/settings.json`. Repeat it for each
 | **Stay in Place** | It still animates, but stops walking around |
 | **Walking Area ▸** | **Anywhere** (the bottom of the screen), or **Draw New Area…**: drag a rectangle and it walks along that rectangle's bottom edge |
 | **React to Claude** | Pauses or resumes Claude reactions |
-| **Connect / Disconnect from Claude…** | Adds or removes the hooks |
-| **Settings…** | Size, appearance, walking area, and which actions it does on its own |
+| **Connect / Update / Disconnect from Claude…** | Adds, refreshes or removes the hooks |
+| **Start at Login** | Opens Claudinion automatically after you restart or log in |
+| **Settings…** | Size, appearance, walking area, update checks, and which actions it does on its own |
+| **Check for Updates… / Update to vX.Y.Z…** | Checks GitHub for a new version, or installs one that's available |
 
-Your settings are saved and survive restarts.
+Your settings (size, appearance, walking area, chosen actions) are saved and come back every time it starts.
 
 ## All actions
 
@@ -162,19 +184,28 @@ These play automatically while Claude works, and they always take priority over 
 |---|---|
 | starts a session | wakes up, stretches and hops |
 | gets your message | perks up with a **!** |
-| is thinking | paces with **…** thought dots |
-| reads or searches files | walks around with a magnifying glass |
+| is thinking | paces and taps its chin; a thought bubble cycles through **…**, a turning gear, **?** and a light bulb 💡 |
+| reads or searches files | holds a magnifier to its eye, then finds a document with a highlighted line |
+| loads a skill | studies a book, with sparkles |
+| plans or updates its to-do list | ticks boxes on a clipboard |
 | runs shell commands | types on a little laptop |
+| runs tests | shakes a bubbling test tube |
+| uses git | grows a branch tree, commit by commit |
+| installs packages or builds | catches falling parcels and stacks them |
 | edits or writes files | hammers a brick, with sparks |
 | uses the web | holds up a spinning globe |
+| uses an MCP tool | plugs a cable into a socket, which buzzes with power |
+| starts a subagent | calls out orders through a megaphone; helper clones walk beside it while subagents run |
 | needs your permission or an answer | jumps and waves with a flashing **!** |
+| has an action blocked | walks into a stop sign, bounces back and shakes its head |
 | has a tool fail | shakes, sad and sweaty |
-| runs subagents | gets mini helper clones walking beside it |
 | compacts its context | gets squished flat, then pops back up |
 | completes a task | shows a ✓ |
 | changes folder | runs off one edge and comes back from the other |
 | finishes its turn | celebrates with a ✓ and confetti |
-| hits an API error (rate limit, overload…) | falls over dizzy |
+| is waiting for your reply | waves at you with a **?**: your turn |
+| hits a rate limit | sits by an hourglass, tapping its foot |
+| hits another API error | falls over dizzy |
 | ends the session | waves goodbye and goes to sleep |
 
 ## How it works
@@ -183,12 +214,12 @@ These play automatically while Claude works, and they always take priority over 
 Claude Code ──hook──▶ Claudinion --hook ──append──▶ ~/.claude/claudinion/events.jsonl ──watch──▶ Claudinion (on screen)
 ```
 
-- **Two modes, one binary.** When Claude Code fires a hook, it runs the same app binary in a short-lived `--hook` mode. That process reads the hook's JSON from stdin and appends one line to `~/.claude/claudinion/events.jsonl`. The line holds only the event name, the tool name, the notification type, the session id and a timestamp.
+- **Two modes, one binary.** When Claude Code fires a hook, it runs the same app binary in a short-lived `--hook` mode. That process reads the hook's JSON from stdin and appends one line to `~/.claude/claudinion/events.jsonl`. The line holds only the event name, the tool name, the notification or error type, the session id and a timestamp. For shell commands it keeps a single category word (`git`, `test`, `install` or `build`), never the command itself.
 - **Watching the file.** The running minion reads new lines from that file a few times per second and switches animation.
 - **Never slows Claude down.** The hooks are `async`, so Claude doesn't wait for them, and the event file is trimmed automatically when it grows past 512 KB.
 - **Safety timeout.** If Claude goes quiet for 10 minutes in the middle of a task (for example, a session was closed), the minion goes back to playing.
 
-**Hook events used:** `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `Notification`, `SubagentStart`, `SubagentStop`, `Stop`, `StopFailure`, `PreCompact`, `PostCompact`, `TaskCompleted`, `CwdChanged`, `SessionEnd`.
+**Hook events used:** `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied`, `Notification`, `SubagentStart`, `SubagentStop`, `Stop`, `StopFailure`, `PreCompact`, `PostCompact`, `TaskCompleted`, `CwdChanged`, `SessionEnd`.
 
 ## Troubleshooting
 
@@ -255,6 +286,13 @@ build/Claudinion.app/Contents/MacOS/Claudinion --gallery /tmp/actions.png
 That draws one frame of every action. Use `--gallery /tmp/r.png reactions` for the Claude reactions, and `--sheet /tmp/s.png` for several frames per action.
 
 Pull requests with new actions are very welcome.
+
+### Releasing a new version
+
+1. Bump the number in [`VERSION`](VERSION), for example `1.0.0` → `1.1.0`, and commit it.
+2. Run `./release.sh --publish`. This builds the app, zips it as `build/Claudinion.zip` and creates the GitHub Release `v1.1.0` with the GitHub CLI (`gh`). Without `--publish` it only builds the zip and prints the `gh` command to run.
+
+Installed copies pick up the new release within a day, or straight away with **Check for Updates…**. The release must include an asset named exactly `Claudinion.zip`, and its version must match the tag.
 
 ## License
 

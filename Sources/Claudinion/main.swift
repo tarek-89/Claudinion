@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 
 // MARK: - Hook mode
 // Claude Code runs `Claudinion --hook` for each hook event. It reads the event JSON on stdin and
@@ -7,12 +8,36 @@ import AppKit
 let eventsDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/claudinion")
 let eventsURL = eventsDir.appendingPathComponent("events.jsonl")
 
+func commandKind(_ command: String) -> String? {
+    let parts = command.lowercased()
+        .components(separatedBy: CharacterSet(charactersIn: "&|;\n"))
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty && !$0.hasPrefix("cd ") }
+    func any(_ test: (String) -> Bool) -> Bool { parts.contains(where: test) }
+    let testRunners = ["pytest", "jest", "vitest", "phpunit", "rspec", "pest", "mocha", "playwright test"]
+    if any({ p in testRunners.contains { p.hasPrefix($0) } || p.range(of: #"\b(npm|yarn|pnpm|bun|go|cargo|swift|dotnet|mix|artisan|xcodebuild)\b.*\btest\b"#, options: .regularExpression) != nil }) {
+        return "test"
+    }
+    if any({ $0.hasPrefix("git ") || $0 == "git" || $0.hasPrefix("gh ") }) { return "git" }
+    if any({ $0.range(of: #"^(npm (install|i|ci)|yarn( add| install)?$|yarn add|pnpm (add|install|i)|bun (add|install)|pip3? install|brew install|composer (install|require|update)|bundle install|cargo (add|install)|gem install|pod install)\b"#, options: .regularExpression) != nil }) {
+        return "install"
+    }
+    if any({ $0.range(of: #"^(make\b|xcodebuild|swiftc|swift build|cargo build|go build|tsc\b|vite build|webpack|gradle|mvn|\./build)|\b(npm|yarn|pnpm|bun) run (build|compile)"#, options: .regularExpression) != nil }) {
+        return "build"
+    }
+    return nil
+}
+
 func runHook() -> Never {
     let data = FileHandle.standardInput.readDataToEndOfFile()
     guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { exit(0) }
     var out: [String: Any] = ["ts": Date().timeIntervalSince1970]
-    for key in ["hook_event_name", "tool_name", "notification_type", "session_id"] {
+    for key in ["hook_event_name", "tool_name", "notification_type", "session_id", "error"] {
         if let v = obj[key] as? String { out[key] = v }
+    }
+    // For shell commands only a category is kept (git, test, install or build), never the command itself.
+    if let command = (obj["tool_input"] as? [String: Any])?["command"] as? String, let kind = commandKind(command) {
+        out["command_kind"] = kind
     }
     guard var line = try? JSONSerialization.data(withJSONObject: out) else { exit(0) }
     line.append(0x0A)
@@ -73,11 +98,9 @@ enum Art {
     static let note = ["..bb", "..b.", "..b.", "bbb.", "bbb."]
     static let heart = [".rr.rr.", "rrrrrrr", "rrrrrrr", ".rrrrr.", "..rrr..", "...r..."]
     static let ball = [".rr.", "rwrr", "rrrr", ".rr."]
-    static let dot = ["ll", "ll"]
     static let star = [".y.", "yyy", ".y."]
     static let sweat = [".c.", "ccc", "ccc", ".c."]
     static let crumb = ["n"]
-    static let magnifier = [".kkk...", "kcwck..", "kccck..", "kccck..", ".kkk...", "....nn.", ".....nn"]
     static let laptop = [
         [".kkkkkkkk.", ".kggkgggk.", ".kkgggkkk.", ".kgkggggk.", ".kkkkkkkk.", "llllllllll"],
         [".kkkkkkkk.", ".kgggkggk.", ".kgkkgggk.", ".kkggkkkk.", ".kkkkkkkk.", "llllllllll"],
@@ -109,14 +132,73 @@ enum Art {
     static let blaster = ["lllllll", "bb.....", "bb....."]
     static let laser = ["rrrr"]
     static let smoke = [".l.", "lll", ".l."]
-    static let glasses = ["kkkk......kkkk", "k..kkkkkkkk..k", "k..k......k..k", "kkkk......kkkk"]
     static let mug = ["llll.", "lnnll", "lnnl.", "llll."]
-    static let codeGlyphs = [
-        [".gg.gg.", ".g...g.", "g.....g", ".g...g.", ".gg.gg."],   // { }
-        [".g.", "gg.", ".g.", ".g.", "ggg"],                       // 1
-        ["ggg", "g.g", "g.g", "g.g", "ggg"],                       // 0
-    ]
     static let cloud = [".mmm.mm..", "mmmmmmmmm", ".mmmmmmm."]
+    // Thinking
+    static let thoughtBubble = ["..mmmmmmmmmm..", ".mwwwwwwwwwwm.", "mwwwwwwwwwwwwm", "mwwwwwwwwwwwwm",
+                                "mwwwwwwwwwwwwm", "mwwwwwwwwwwwwm", "mwwwwwwwwwwwwm", "mwwwwwwwwwwwwm",
+                                ".mwwwwwwwwwwm.", "..mmmmmmmmmm.."]
+    static let puffSmall = ["ww", "ww"]
+    static let puffMedium = [".w.", "www", ".w."]
+    static let thoughtDot = ["kk", "kk"]
+    static let gear = [
+        ["...k...", ".kkkkk.", ".kk.kk.", "kk...kk", ".kk.kk.", ".kkkkk.", "...k..."],
+        ["k.....k", ".kkkkk.", ".kk.kk.", ".k...k.", ".kk.kk.", ".kkkkk.", "k.....k"],
+    ]
+    static let bulb = ["..yyy..", ".yyyyy.", ".yywyy.", ".yyyyy.", "..yyy..", "..mmm..", "...m..."]
+    static let blueQuestion = question.map { $0.replacingOccurrences(of: "y", with: "b") }
+
+    // Searching
+    static let lens = [".kkkkk.", "kccccck", "kcwkkck", "kckkkck", "kckkkck", "kccccck", ".kkkkk."]
+    static func document(highlight: Bool) -> [String] {
+        ["wwwwm.", "wwwwmm", "wkkkkw", "wwwwww", "wkkkww", "wwwwww", highlight ? "wyyyyw" : "wkkkkw", "wwwwww"]
+    }
+
+    // Coding (side view)
+    static let codeTag = ["..g...g.g..", ".g....g..g.", "g....g....g", ".g..g....g.", "..g.g...g.."]
+    static let sideGlasses = ["...kkkk", "kkkk..k", "...k..k", "...kkkk"]
+    static let stool = [String(repeating: "n", count: 12)]
+    static let stoolLeg = ["nn", "nn", "nn"]
+    static let deskTop = [String(repeating: "n", count: 16)]
+    static let deskLeg = ["n", "n", "n", "n", "n", "n"]
+    static let laptopSideBase = [String(repeating: "l", count: 7)]
+    static let laptopSideScreen = ["..m", "..m", ".mm", ".m.", ".m.", "mm.", "m..", "m.."]
+    static let bug = [[".r.", "rrr", "k.k"], [".r.", "rrr", ".k."]]
+    /// The glowing inner face of the side-view screen, in cycling colours.
+    static func screenGlow(_ colors: [Character], shift: Int) -> [String] {
+        laptopSideScreen.enumerated().map { r, row in
+            String(row.map { $0 == "m" ? colors[(r + shift) % colors.count] : "." })
+        }
+    }
+
+    // More Claude reactions
+    static func clipboard(checked: Int) -> [String] {
+        func box(_ i: Int) -> String { i < checked ? "g" : "m" }
+        return ["..nn..", "wwwwww", "w\(box(0))wkkw", "wwwwww", "w\(box(1))wkkw", "wwwwww", "w\(box(2))wkkw", "wwwwww"]
+    }
+    static let plug = ["llll.", "lllkk", "llll."]
+    static let socket = ["mmmm", "mkkm", "mmmm", "mkkm"]
+    static let zap = ["y.", "yy", ".y"]
+    static let gitGraph = [".g.....", ".mm....", ".m.m...", ".m..p..", ".g..m..", ".m..m..", ".m..p..", ".m.m...",
+                           ".mm....", ".g.....", ".m.....", ".g....."]
+    static func flask(_ liquid: Character) -> [String] {
+        [".mmm.", ".m\(liquid)m.", ".m\(liquid)m.", "m\(liquid)\(liquid)\(liquid)m", "m\(liquid)\(liquid)\(liquid)m", "mmmmm"]
+    }
+    static let box = ["nnnnnn", "nnyynn", "nnyynn", "nnnnnn", "nnnnnn"]
+    static let stopSign = [".rrrr.", "rrrrrr", "rwwwwr", "rrrrrr", ".rrrr.", "..mm..", "..mm..", "..mm..", "..mm..",
+                           "..mm.."]
+    static func hourglass(_ k: Int) -> [String] {
+        ["nnnnn",
+         "m" + (k < 3 ? "yyy" : "...") + "m",
+         ".m" + (k < 2 ? "y" : ".") + "m.",
+         k < 3 ? "..y.." : "..m..",
+         ".m" + (k >= 1 ? "y" : ".") + "m.",
+         "m" + (k >= 2 ? "yyy" : k >= 1 ? ".y." : "...") + "m",
+         "nnnnn"]
+    }
+    static let megaphone = ["...ll", "lrlll", "lrlll", "...ll"]
+    static let soundWave = [".w", "w.", "w.", ".w"].map { String($0.reversed()) }
+
     static func juggleBall(_ c: Character) -> [String] { [".\(c).", "\(c)\(c)\(c)", ".\(c)."] }
     static func pixel(_ c: Character) -> [String] { [String(c)] }
 }
@@ -136,6 +218,7 @@ struct Pose {
     var eyes = Eyes.open
     var mouth = Mouth.none
     var color = orange
+    var profile: CGFloat = 0                 // side view: 1 shows only the right eye, -1 only the left
 
     mutating func sit() { legs = [0, 0, 0, 0]; dy += 2 }
     mutating func walk(_ t: Int, every n: Int = 3) { legs = (t / n) % 2 == 0 ? [1, 2, 1, 2] : [2, 1, 2, 1] }
@@ -162,6 +245,7 @@ enum Act: String, CaseIterable {
     // Claude reactions
     case wakeUp, perk, thinking, typing, searching, building, browsing, sad, alert, celebrate
     case dizzy, goodbye, squish, wrap, idle
+    case studying, planning, testing, git, packaging, plugging, delegating, blocked, nudge, rateLimited
 
     /// Free-play actions, grouped for the menu and the settings window.
     static let categories: [(name: String, acts: [Act])] = [
@@ -174,10 +258,14 @@ enum Act: String, CaseIterable {
     ]
     static let freePlay: [Act] = categories.flatMap { $0.acts }
     /// Claude reactions, in the order they usually happen during a session.
-    static let claude: [Act] = [.wakeUp, .perk, .thinking, .searching, .typing, .building, .browsing, .alert,
-                                .sad, .squish, .wrap, .celebrate, .dizzy, .goodbye]
+    static let claude: [Act] = [.wakeUp, .perk, .thinking, .searching, .studying, .planning, .typing, .testing, .git,
+                                .packaging, .building, .browsing, .plugging, .delegating, .alert, .blocked, .sad,
+                                .squish, .wrap, .celebrate, .nudge, .rateLimited, .dizzy, .goodbye]
 
-    var isLoop: Bool { [.thinking, .typing, .searching, .building, .browsing, .alert, .squish].contains(self) }
+    var isLoop: Bool {
+        [.thinking, .typing, .searching, .building, .browsing, .alert, .squish, .studying, .planning, .testing, .git,
+         .packaging, .plugging, .delegating].contains(self)
+    }
 
     var title: String {
         switch self {
@@ -212,7 +300,7 @@ enum Act: String, CaseIterable {
         case .playDead: return "Play Dead"
         case .wakeUp: return "Wake Up – session starts"
         case .perk: return "Perk Up – you send a message"
-        case .thinking: return "Pace – thinking"
+        case .thinking: return "Thought Bubble – thinking"
         case .typing: return "Laptop – running commands"
         case .searching: return "Magnifier – reading & searching"
         case .building: return "Hammer – editing files"
@@ -224,6 +312,16 @@ enum Act: String, CaseIterable {
         case .goodbye: return "Wave Goodbye – session ends"
         case .squish: return "Squished – compacting"
         case .wrap: return "Run Off Screen – folder changed"
+        case .studying: return "Book – loading a skill"
+        case .planning: return "Clipboard – planning & to-dos"
+        case .testing: return "Test Tube – running tests"
+        case .git: return "Branch Tree – using git"
+        case .packaging: return "Boxes – installing & building"
+        case .plugging: return "Plug – using an MCP tool"
+        case .delegating: return "Megaphone – starting a subagent"
+        case .blocked: return "Stop Sign – action blocked"
+        case .nudge: return "Wave – your turn"
+        case .rateLimited: return "Hourglass – rate limited"
         case .idle: return "Idle"
         }
     }
@@ -243,7 +341,7 @@ enum Act: String, CaseIterable {
         case .shower: return 120
         case .whip: return 80
         case .blaster: return 96
-        case .coding: return Int.random(in: 120...200)
+        case .coding: return 144
         case .crying: return 96
         case .depressed: return Int.random(in: 120...180)
         case .playDead: return 84
@@ -260,7 +358,11 @@ enum Act: String, CaseIterable {
         case .celebrate: return 40
         case .dizzy: return 60
         case .wrap: return 600
-        case .thinking, .typing, .searching, .building, .browsing, .alert, .squish: return 96
+        case .thinking, .typing, .searching, .building, .browsing, .alert, .squish, .studying, .planning, .testing,
+             .git, .packaging, .plugging, .delegating: return 96
+        case .nudge: return 48
+        case .blocked: return 36
+        case .rateLimited: return 120
         }
     }
 }
@@ -470,14 +572,51 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         if puff >= 36 { addF(Art.smoke, 15, 3 - CGFloat(puff - 36) * 0.2) }
 
     case .coding:
-        let swap = (t / 2) % 2 == 0
-        p.left = swap ? .raised : .out; p.right = swap ? .out : .raised; p.eyes = .look(0, 1)
-        add(Art.glasses, 2.5, 2.5)
-        add(Art.laptop[(t / 4) % 2], 3.5, 6)
-        add(Art.mug, 10.5, 7)
-        add(Art.pixel("l"), 11.25, 6 - CGFloat(t % 12) * 0.2)
-        for (k, x) in [-3.0, 13.5, -1.5].enumerated() {
-            add(Art.codeGlyphs[k], CGFloat(x), 4 - CGFloat((t + k * 16) % 48) * 0.15)
+        // Side view: sits on a stool at a desk and types on a laptop. A bug crawls in, gets squashed, ✓.
+        let cyc = t % 144
+        p.legs = [0, 0, 0, 0]
+        p.back(f, .hidden)
+        p.eyes = .look(f, 0)
+        p.profile = f
+        addF(Art.sideGlasses, 6, 2.5)
+        addF(Art.stool, 3, 7)
+        addF(Art.stoolLeg, 5.5, 7.5)
+        addF(Art.deskTop, 11, 5.5)
+        addF(Art.deskLeg, 11.5, 6)
+        addF(Art.deskLeg, 18, 6)
+        addF(Art.laptopSideBase, 12, 5)
+        addF(Art.laptopSideScreen, 15.25, 1)
+        let bugTime = cyc >= 84 && cyc < 114
+        let glowColors: [Character] = bugTime ? ["r", "r", "r"] : ["g", "b", "y", "p"]
+        addF(Art.screenGlow(glowColors, shift: t / 2), 14.75, 1)
+        addF(Art.mug, 17, 3.5)
+        addF(Art.pixel("l"), 17.75, 3 - CGFloat(t % 12) * 0.2)
+
+        if cyc < 84 {
+            p.front(f, (t / 2) % 2 == 0 ? .punch : .raised)               // typing
+            p.dy = (t / 4) % 2 == 0 ? 0 : 0.25
+            let colors: [Character] = ["g", "b", "y", "p"]
+            for k in 0..<3 {
+                let ph = CGFloat((t + k * 8) % 24)
+                addF(Art.pixel(colors[(t / 24 + k) % 4]), 15 - ph * 0.12 + CGFloat(k) * 0.4, 1 - ph * 0.2)
+            }
+            if (t / 12) % 4 == 1 { addF(Art.codeTag, 12.5, -2.5 - CGFloat(t % 12) * 0.1) }
+        } else {
+            let bugX = 18.5 - CGFloat(min(cyc, 101) - 84) * 0.25
+            if cyc < 102 {
+                p.front(f, .raised); p.eyes = .big
+                addF(Art.bug[(t / 2) % 2], bugX, 4)
+                if (t / 6) % 2 == 0 { add(Art.bang, 5.5, -3) }
+            } else if cyc < 114 {
+                p.front(f, .up); p.eyes = .closed                          // wind up
+                addF(Art.bug[0], bugX, 4)
+            } else if cyc < 120 {
+                p.front(f, .punch); p.dy = 0.5; p.sy = 0.95                // squash!
+                addF(Art.star, bugX - 0.25, 3.5)
+            } else {
+                p.front(f, .raised); p.eyes = .happy
+                add(Art.check, 4.25, -4)
+            }
         }
 
     case .crying:
@@ -524,8 +663,29 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         add(Art.bang, 5.5, -3.5 + p.dy)
 
     case .thinking:
-        fr.vx = 0.25 * f; p.walk(t, every: 4); p.eyes = .look(f, -1); p.front(f, .raised)
-        for i in 0..<((t / 8) % 4) { add(Art.dot, 3.5 + CGFloat(i) * 1.75, -1.5) }
+        // Paces, then stops to tap its chin. The thought bubble cycles: dots, turning gear, "?", light bulb.
+        let phase = (t / 24) % 4
+        if phase == 0 || phase == 2 {
+            fr.vx = 0.25 * f; p.walk(t, every: 4); p.eyes = .look(f, -1)
+        } else {
+            p.front(f, (t / 6) % 2 == 0 ? .raised : .out)
+            p.eyes = (t / 8) % 2 == 0 ? .look(-1, -1) : .look(1, -1)
+        }
+        addF(Art.puffSmall, 8.5, 0.5)
+        addF(Art.puffMedium, 9.25, -1.25)
+        addF(Art.thoughtBubble, 8, -6.5)
+        switch phase {
+        case 0:
+            for i in 0..<((t / 6) % 4) { addF(Art.thoughtDot, 9.75 + CGFloat(i) * 1.25, -4) }
+        case 1:
+            addF(Art.gear[(t / 4) % 2], 9.75, -5.25)
+        case 2:
+            addF(Art.blueQuestion, 10.25, -5)
+        default:
+            addF(Art.bulb, 9.75, -5.25)
+            p.eyes = .big
+            if t % 24 < 6 { p.dy = -1 }
+        }
 
     case .typing:
         let swap = (t / 2) % 2 == 0
@@ -533,9 +693,111 @@ func render(_ act: Act, _ t: Int, _ f: CGFloat) -> Frame {
         add(Art.laptop[(t / 4) % 2], 3.5, 6)
 
     case .searching:
-        fr.vx = 0.2 * f; p.walk(t, every: 4); p.front(f, .raised)
-        p.eyes = (t / 10) % 2 == 0 ? .look(f, 0) : .look(f, 1)
-        addF(Art.magnifier, 10.5, 1.5)
+        // Scans with the magnifier held to its eye, then stops to read a found document.
+        let cyc = t % 48
+        p.front(f, .raised); p.eyes = .look(f, 0)
+        var lensX: CGFloat = 6.75, lensY: CGFloat = 1.75
+        if cyc < 32 {
+            fr.vx = 0.18 * f; p.walk(t, every: 4)
+            lensY += (t / 6) % 2 == 0 ? 0 : 0.5
+            for k in 0..<3 where (t / 4 + k) % 3 == 0 {
+                addF(Art.pixel("y"), 10.5 + CGFloat(k) * 0.6, 5.5 + CGFloat(k) * 1.1)   // scanning glint
+            }
+        } else {
+            p.dx = 0.5 * f; lensX += 0.5
+            addF(Art.document(highlight: (t / 3) % 2 == 0), 13, 1.5)
+            if cyc >= 40 { addF(Art.star, 15.75, 0) }
+        }
+        addF(Art.lens, lensX, lensY)
+
+    case .studying:
+        var frame = render(.read, t, f)
+        if (t / 8) % 2 == 0 { frame.props.append(Prop(art: Art.star, x: 10.5, y: 1)) }
+        else { frame.props.append(Prop(art: Art.star, x: 0, y: 2)) }
+        return frame
+
+    case .planning:
+        // Ticks off a to-do list on a clipboard, one box at a time.
+        p.front(f, .raised); p.eyes = .look(f, 1)
+        let checked = (t % 48) / 12
+        addF(Art.clipboard(checked: checked), 11.5, 1.5)
+        if t % 12 >= 9 && checked < 3 { p.back(f, .raised); p.dy = -0.25 }
+
+    case .testing:
+        // Shakes a bubbling test tube; the liquid changes colour as the tests run.
+        let liquids: [Character] = ["g", "c", "p", "y"]
+        p.front(f, .raised); p.eyes = .look(f, 0)
+        p.dx = (t / 2) % 2 == 0 ? 0.15 : -0.15
+        addF(Art.flask(liquids[(t / 16) % 4]), 11.5, 1)
+        for k in 0..<3 {
+            let ph = CGFloat((t + k * 5) % 15)
+            addF(Art.pixel(liquids[(t / 16) % 4]), 12.5 + CGFloat(k % 2) * 0.5, 0.5 - ph * 0.25)
+        }
+
+    case .git:
+        // A branch tree grows commit by commit next to it.
+        p.front(f, .raised); p.eyes = .look(f, -1)
+        let shown = min(12, (t % 72) / 5 + 1)
+        let graph = Art.gitGraph.enumerated().map { r, row in r >= 12 - shown ? row : String(repeating: ".", count: row.count) }
+        addF(graph, 12.5, -2.5, 0.75)
+        if shown == 12 && (t / 4) % 2 == 0 { addF(Art.star, 12.5, -4) }
+
+    case .packaging:
+        // Parcels drop in front of it and stack up.
+        let cyc = t % 72
+        p.left = .raised; p.right = .raised
+        let landed = min(3, cyc / 18)
+        for i in 0..<landed { addF(Art.box, 13, 6.5 - CGFloat(i) * 2.5) }
+        if landed < 3 {
+            let fall = CGFloat(cyc % 18) / 18
+            addF(Art.box, 13, -8 + fall * (14.5 - CGFloat(landed) * 2.5))
+            p.eyes = .look(f, -1)
+        } else {
+            p.eyes = .happy
+        }
+
+    case .plugging:
+        // Plugs a cable into a socket; it buzzes with power once connected.
+        let cyc = t % 36
+        p.front(f, .raised); p.eyes = .look(f, 1)
+        addF(Art.socket, 17, 7)
+        let plugX = cyc < 12 ? 12 + CGFloat(cyc) * 0.25 : 15
+        addF(Art.plug, plugX, 7.5)
+        for x in stride(from: CGFloat(11), to: plugX, by: 0.5) { addF(Art.pixel("k"), x, 4.5 + (x - 11) * 0.75) }
+        if cyc >= 12 {
+            p.eyes = .big; p.dx = (t / 2) % 2 == 0 ? 0.2 : -0.2
+            if (t / 3) % 2 == 0 { addF(Art.zap, 17.25, 5); addF(Art.zap, 11.5, 1) }
+        }
+
+    case .delegating:
+        // Calls out orders through a megaphone (helper clones appear while subagents run).
+        p.front(f, .raised); p.eyes = .look(f, 0); p.mouth = .o
+        addF(Art.megaphone, 11.5, 3)
+        if (t / 4) % 2 == 0 { addF(Art.soundWave, 14.5, 3); addF(Art.soundWave, 15.75, 2.5) }
+
+    case .blocked:
+        // Walks into a stop sign, bounces back and shakes its head.
+        addF(Art.stopSign, 13, 4)
+        if t < 10 {
+            fr.vx = 0; p.walk(t, every: 2); p.dx = CGFloat(t) * 0.12 * f; p.eyes = .look(f, 0)
+        } else if t < 16 {
+            p.dx = (1.2 - CGFloat(t - 10) * 0.25) * f; p.eyes = .dizzy; addF(Art.star, 12, 2)
+        } else {
+            p.eyes = (t / 4) % 2 == 0 ? .look(-1, 0) : .look(1, 0)
+            add(Art.sweat, f > 0 ? 0 : 10.5, 0.5)
+        }
+
+    case .nudge:
+        // Turns to you and waves both arms: your turn.
+        let up = (t / 4) % 2 == 0
+        p.left = up ? .up : .raised; p.right = up ? .raised : .up; p.eyes = .big; p.mouth = .smile
+        if (t / 12) % 2 == 0 { add(Art.question, 10.5, -2.5) }
+
+    case .rateLimited:
+        // Sits and waits next to an hourglass, tapping a foot.
+        p.legs = [2, 2, 2, (t / 4) % 2 == 0 ? 1 : 2]; p.eyes = .sad
+        p.front(f, .down)
+        addF(Art.hourglass((t / 24) % 4), 13, 3.75, 0.75)
 
     case .building:
         p.eyes = .look(f, 1)
@@ -651,8 +913,8 @@ func drawBody(_ ctx: CGContext, _ p: Pose, at origin: CGPoint, scale s: CGFloat 
     shape.forEach { ctx.fill($0) }
 
     ctx.setFillColor(eyeColor.cgColor)
-    drawEye(ctx, p.eyes, 3, 3)
-    drawEye(ctx, p.eyes, 8, 3)
+    if p.profile <= 0 { drawEye(ctx, p.eyes, 3, 3) }
+    if p.profile >= 0 { drawEye(ctx, p.eyes, 8, 3) }
     switch p.mouth {
     case .none: break
     case .o: ctx.fill(CGRect(x: 5.5, y: 4.5, width: 1, height: 0.75))
@@ -801,6 +1063,10 @@ final class Pet: NSObject {
     // Settings, saved between launches
     var disabled = Set((UserDefaults.standard.stringArray(forKey: "disabledActions") ?? []).compactMap(Act.init(rawValue:)))
     var settingsWindow: NSWindow?
+    var loginCheckbox: NSButton?
+    var updateCheckbox: NSButton?
+    var availableUpdate: (version: String, zip: URL)?
+    var updating = false
     var areaLabel: NSTextField?
     var pickerWindows: [NSWindow] = []
     var walkArea: NSRect? = {
@@ -856,6 +1122,9 @@ final class Pet: NSObject {
         }
         refreshMenus()
         play(.wakeUp)
+        // Look for a new release shortly after launch, then once a day.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in self?.autoCheckForUpdates() }
+        Timer.scheduledTimer(withTimeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in self?.autoCheckForUpdates() }
         Timer.scheduledTimer(withTimeInterval: 1.0 / 12.0, repeats: true) { [weak self] _ in self?.step() }
     }
 
@@ -925,7 +1194,9 @@ final class Pet: NSObject {
         item("Connect to Claude…", #selector(toggleClaudeHooks), in: menu)
         menu.addItem(.separator())
 
+        item("Start at Login", #selector(toggleLogin), in: menu)
         item("Settings…", #selector(openSettings), ",", in: menu)
+        item("Check for Updates…", #selector(updateMenuClicked), in: menu)
         item("About Claudinion", #selector(openAbout), in: menu)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -959,7 +1230,9 @@ final class Pet: NSObject {
     /// Keeps the pet's right-click menu and the menu bar menu showing the same state.
     func refreshMenus() {
         let connected = isConnected()
+        let outdated = needsUpdate()
         func allItems(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(allItems) ?? []) } }
+        loginCheckbox?.state = startsAtLogin ? .on : .off
         for menu in menus {
             for item in allItems(menu) {
                 switch item.action {
@@ -968,8 +1241,12 @@ final class Pet: NSObject {
                 case #selector(clearArea): item.state = walkArea == nil ? .on : .off
                 case #selector(useCustomArea):
                     item.state = walkArea == nil ? .off : .on
+                case #selector(toggleLogin): item.state = startsAtLogin ? .on : .off
+                case #selector(updateMenuClicked):
+                    item.title = updating ? "Updating…" : availableUpdate.map { "Update to v\($0.version)…" } ?? "Check for Updates…"
                 case #selector(toggleVisible): item.title = window.isVisible ? "Hide Pet" : "Show Pet"
-                case #selector(toggleClaudeHooks): item.title = connected ? "Disconnect from Claude…" : "Connect to Claude…"
+                case #selector(toggleClaudeHooks):
+                    item.title = outdated ? "Update Claude Connection…" : connected ? "Disconnect from Claude…" : "Connect to Claude…"
                 default: break
                 }
             }
@@ -979,7 +1256,7 @@ final class Pet: NSObject {
     // MARK: Claude hooks
 
     static let hookEvents = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-                             "PermissionRequest", "Notification", "SubagentStart", "SubagentStop", "Stop",
+                             "PermissionRequest", "PermissionDenied", "Notification", "SubagentStart", "SubagentStop", "Stop",
                              "StopFailure", "PreCompact", "PostCompact", "TaskCompleted", "CwdChanged", "SessionEnd"]
     let claudeSettingsURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
 
@@ -988,23 +1265,33 @@ final class Pet: NSObject {
         return command.contains("Claudinion") && command.contains("--hook")
     }
 
-    func isConnected() -> Bool {
+    /// Which hook events in ~/.claude/settings.json currently point at Claudinion.
+    func connectedEvents() -> Set<String> {
         guard let data = try? Data(contentsOf: claudeSettingsURL),
               let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let hooks = root["hooks"] as? [String: Any] else { return false }
-        return hooks.values.contains { groups in
-            (groups as? [[String: Any]] ?? []).contains { ($0["hooks"] as? [Any] ?? []).contains(where: isPetHook) }
-        }
+              let hooks = root["hooks"] as? [String: Any] else { return [] }
+        return Set(hooks.compactMap { event, groups in
+            (groups as? [[String: Any]] ?? []).contains { ($0["hooks"] as? [Any] ?? []).contains(where: isPetHook) } ? event : nil
+        })
+    }
+
+    func isConnected() -> Bool { !connectedEvents().isEmpty }
+
+    /// Connected, but set up by an older version that didn't hook every event this one uses.
+    func needsUpdate() -> Bool {
+        let events = connectedEvents()
+        return !events.isEmpty && !Set(Pet.hookEvents).isSubset(of: events)
     }
 
     @objc func toggleClaudeHooks() {
-        let connected = isConnected()
+        let updating = needsUpdate()
+        let connected = isConnected() && !updating
         let alert = NSAlert()
-        alert.messageText = connected ? "Disconnect from Claude?" : "Connect to Claude?"
+        alert.messageText = connected ? "Disconnect from Claude?" : updating ? "Update the Claude connection?" : "Connect to Claude?"
         alert.informativeText = connected
             ? "This removes the Claudinion hooks from ~/.claude/settings.json."
             : "This adds hooks to ~/.claude/settings.json so the pet reacts to Claude Code in the terminal and in the Claude app's Code tab. Your current file is backed up as settings.json.before-claudinion.\n\nStart a new Claude session afterwards."
-        alert.addButton(withTitle: connected ? "Disconnect" : "Connect")
+        alert.addButton(withTitle: connected ? "Disconnect" : updating ? "Update" : "Connect")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
@@ -1129,11 +1416,23 @@ final class Pet: NSObject {
             areaLabel,
         ])
 
-        let stack = NSStackView(views: [heading("Size"), sizeRow, heading("Appearance"), themeRow,
+        let login = NSButton(checkboxWithTitle: "Start Claudinion when you log in", target: self, action: #selector(toggleLogin))
+        login.state = startsAtLogin ? .on : .off
+        loginCheckbox = login
+        let autoUpdate = NSButton(checkboxWithTitle: "Check for updates automatically", target: self, action: #selector(toggleAutoUpdates(_:)))
+        autoUpdate.state = autoUpdateChecks ? .on : .off
+        updateCheckbox = autoUpdate
+        let version = NSTextField(labelWithString: "Version \(currentVersion)")
+        version.font = .systemFont(ofSize: 11)
+        version.textColor = .secondaryLabelColor
+        let updateRow = NSStackView(views: [autoUpdate, NSButton(title: "Check Now", target: self, action: #selector(checkNow)), version])
+
+        let stack = NSStackView(views: [login, updateRow, heading("Size"), sizeRow, heading("Appearance"), themeRow,
                                         heading("Where it walks"), areaRow, heading("Actions it does on its own"), grid, buttons, hint])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 12
+        stack.setCustomSpacing(24, after: updateRow)
         stack.setCustomSpacing(24, after: sizeRow)
         stack.setCustomSpacing(24, after: themeRow)
         stack.setCustomSpacing(24, after: areaRow)
@@ -1142,6 +1441,155 @@ final class Pet: NSObject {
         w.setContentSize(stack.fittingSize)
         w.center()
         return w
+    }
+
+    // MARK: Start at login
+
+    var startsAtLogin: Bool { SMAppService.mainApp.status == .enabled }
+
+    @objc func toggleLogin() {
+        do {
+            if startsAtLogin { try SMAppService.mainApp.unregister() } else { try SMAppService.mainApp.register() }
+        } catch {
+            NSApp.activate(ignoringOtherApps: true)
+            NSAlert(error: error).runModal()
+        }
+        if SMAppService.mainApp.status == .requiresApproval {
+            let alert = NSAlert()
+            alert.messageText = "Allow Claudinion to start at login"
+            alert.informativeText = "macOS needs your OK. Turn Claudinion on under Login Items in System Settings."
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "Later")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn { SMAppService.openSystemSettingsLoginItems() }
+        }
+        refreshMenus()
+    }
+
+    // MARK: Updates
+
+    static let repo = "tarek-89/Claudinion"
+    let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+    var autoUpdateChecks: Bool {
+        get { UserDefaults.standard.object(forKey: "autoCheckUpdates") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "autoCheckUpdates") }
+    }
+
+    /// True when version `a` (like "1.10.0" or "v1.2") is newer than `b`.
+    static func isNewer(_ a: String, than b: String) -> Bool {
+        func parts(_ v: String) -> [Int] { v.trimmingCharacters(in: CharacterSet(charactersIn: "vV")).split(separator: ".").map { Int($0) ?? 0 } }
+        let x = parts(a), y = parts(b)
+        for i in 0..<max(x.count, y.count) {
+            let l = i < x.count ? x[i] : 0, r = i < y.count ? y[i] : 0
+            if l != r { return l > r }
+        }
+        return false
+    }
+
+    func autoCheckForUpdates() {
+        if autoUpdateChecks { checkForUpdates(quietly: true) }
+    }
+
+    @objc func updateMenuClicked() {
+        if availableUpdate != nil { installUpdate() } else { checkForUpdates(quietly: false) }
+    }
+
+    @objc func toggleAutoUpdates(_ sender: NSButton) {
+        autoUpdateChecks = sender.state == .on
+    }
+
+    @objc func checkNow() { checkForUpdates(quietly: false) }
+
+    /// Asks GitHub for the latest release. With `quietly`, only an available update is announced (in the menu).
+    func checkForUpdates(quietly: Bool) {
+        var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(Pet.repo)/releases/latest")!)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            let release = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
+            let tag = release?["tag_name"] as? String
+            let zip = (release?["assets"] as? [[String: Any]])?
+                .first { ($0["name"] as? String) == "Claudinion.zip" }
+                .flatMap { ($0["browser_download_url"] as? String).flatMap(URL.init(string:)) }
+            DispatchQueue.main.async {
+                if let tag = tag, let zip = zip, Pet.isNewer(tag, than: self.currentVersion) {
+                    let version = tag.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
+                    self.availableUpdate = (version, zip)
+                    self.refreshMenus()
+                    if !quietly { self.installUpdate() }
+                } else if !quietly {
+                    self.showAlert(tag == nil ? "Couldn't check for updates" : "You're up to date",
+                                   tag == nil ? (error?.localizedDescription ?? "GitHub didn't return a release.")
+                                              : "Claudinion \(self.currentVersion) is the latest version.")
+                }
+            }
+        }.resume()
+    }
+
+    func showAlert(_ title: String, _ text: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    /// Downloads the new release, swaps it in for the running app and relaunches.
+    func installUpdate() {
+        guard let update = availableUpdate, !updating else { return }
+        let alert = NSAlert()
+        alert.messageText = "Update to Claudinion \(update.version)?"
+        alert.informativeText = "You have \(currentVersion). Claudinion will download the new version, replace itself and restart. Your settings are kept."
+        alert.addButton(withTitle: "Update")
+        alert.addButton(withTitle: "Release Notes")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: break
+        case .alertSecondButtonReturn:
+            NSWorkspace.shared.open(URL(string: "https://github.com/\(Pet.repo)/releases/latest")!)
+            return
+        default: return
+        }
+
+        updating = true
+        refreshMenus()
+        URLSession.shared.downloadTask(with: update.zip) { file, _, error in
+            let result = Result { () -> URL in
+                guard let file = file else { throw error ?? CocoaError(.fileReadUnknown) }
+                let work = FileManager.default.temporaryDirectory.appendingPathComponent("claudinion-update-\(UUID().uuidString)")
+                try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+                let unzip = Process()
+                unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                unzip.arguments = ["-x", "-k", file.path, work.path]
+                try unzip.run()
+                unzip.waitUntilExit()
+                let app = work.appendingPathComponent("Claudinion.app")
+                let version = Bundle(url: app)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+                guard unzip.terminationStatus == 0, version == update.version else {
+                    throw NSError(domain: "Claudinion", code: 2,
+                                  userInfo: [NSLocalizedDescriptionKey: "The downloaded update looks incomplete. Please try again later."])
+                }
+                return app
+            }
+            DispatchQueue.main.async { self.finishUpdate(result) }
+        }.resume()
+    }
+
+    func finishUpdate(_ result: Result<URL, Error>) {
+        do {
+            let newApp = try result.get()
+            _ = try FileManager.default.replaceItemAt(Bundle.main.bundleURL, withItemAt: newApp)
+            // Reopen the new copy once this one has quit.
+            let relaunch = Process()
+            relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+            relaunch.arguments = ["-c", "sleep 1; open \"$0\"", Bundle.main.bundleURL.path]
+            try relaunch.run()
+            NSApp.terminate(nil)
+        } catch {
+            updating = false
+            refreshMenus()
+            showAlert("Update failed", error.localizedDescription)
+        }
     }
 
     // MARK: Walking area
@@ -1277,12 +1725,21 @@ final class Pet: NSObject {
 
     // MARK: Claude events
 
-    func toolAct(_ tool: String) -> Act {
+    func toolAct(_ tool: String, command kind: String?) -> Act {
         switch tool {
-        case "Bash", "BashOutput", "KillShell", "Monitor": return .typing
+        case "Bash", "BashOutput", "KillShell", "Monitor":
+            switch kind {
+            case "test": return .testing
+            case "git": return .git
+            case "install", "build": return .packaging
+            default: return .typing
+            }
         case "Read", "Grep", "Glob", "LS", "NotebookRead", "ToolSearch": return .searching
         case "Edit", "Write", "MultiEdit", "NotebookEdit": return .building
         case "WebFetch", "WebSearch": return .browsing
+        case "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "EnterPlanMode": return .planning
+        case "Agent", "Task": return .delegating
+        case "Skill": return .studying
         case "AskUserQuestion", "ExitPlanMode": return .alert
         default:
             let name = tool.lowercased()
@@ -1290,6 +1747,7 @@ final class Pet: NSObject {
             if name.contains("search") || name.contains("read") || name.contains("find") || name.contains("query") {
                 return .searching
             }
+            if name.hasPrefix("mcp__") { return .plugging }
             return .thinking
         }
     }
@@ -1303,17 +1761,19 @@ final class Pet: NSObject {
         case "UserPromptSubmit":
             loop = .thinking; interrupt([.perk])
         case "PreToolUse":
-            loop = toolAct(e["tool_name"] as? String ?? "")
+            loop = toolAct(e["tool_name"] as? String ?? "", command: e["command_kind"] as? String)
         case "PostToolUse":
             if loop != .squish { loop = .thinking }
         case "PostToolUseFailure":
             loop = .thinking; interrupt([.sad])
         case "PermissionRequest":
             loop = .alert
+        case "PermissionDenied":
+            loop = .thinking; interrupt([.blocked])
         case "Notification":
             let type = e["notification_type"] as? String ?? ""
             if type == "permission_prompt" || type == "elicitation_dialog" { loop = .alert }
-            if type == "idle_prompt" { loop = nil }
+            if type == "idle_prompt" { loop = nil; interrupt([.nudge]) }
         case "SubagentStart":
             subagents += 1
         case "SubagentStop":
@@ -1321,7 +1781,9 @@ final class Pet: NSObject {
         case "Stop":
             loop = nil; subagents = 0; interrupt([.celebrate])
         case "StopFailure":
-            loop = nil; subagents = 0; interrupt([.dizzy])
+            loop = nil; subagents = 0
+            let error = (e["error"] as? String ?? "").lowercased()
+            interrupt([error.contains("rate") ? .rateLimited : .dizzy])
         case "PreCompact":
             loopBeforeSquish = loop; loop = .squish
         case "PostCompact":
@@ -1513,7 +1975,9 @@ if let path = argument(after: "--gallery") {
                                 .alert: 2, .whip: 13, .blaster: 1, .fight: 5, .wrap: 4, .wakeUp: 18, .stretch: 18,
                                 .spin: 2, .chaseButterfly: 27, .exercise: 4, .workout: 2, .building: 0, .celebrate: 3,
                                 .crying: 40, .run: 2, .dance: 6, .sing: 6, .wave: 2, .goodbye: 2, .lookAround: 50,
-                                .typing: 4, .coding: 20, .shower: 8, .read: 4, .juggle: 6, .meditate: 10, .sleep: 20]
+                                .typing: 4, .coding: 20, .shower: 8, .read: 4, .juggle: 6, .meditate: 10, .sleep: 20,
+                                .thinking: 74, .searching: 40, .studying: 4, .planning: 30, .testing: 6, .git: 60,
+                                .packaging: 50, .plugging: 20, .delegating: 2, .blocked: 13, .nudge: 2, .rateLimited: 30]
     let cols = 6
     let cellW = 200, cellH = 190, scale: CGFloat = 0.9
     let rows = (acts.count + cols - 1) / cols

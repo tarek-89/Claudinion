@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="Claudinion"
-VERSION="1.0.0"
+VERSION="$(tr -d '[:space:]' < VERSION)"
 MIN_MACOS="14.0"
 BUILD="build"
 APP="$BUILD/$APP_NAME.app"
