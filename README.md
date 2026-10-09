@@ -79,7 +79,7 @@ This builds a universal app, copies it to `~/Applications/Claudinion.app` and st
 Either way, your minion pops up at the bottom of the screen, and a small pixel icon appears in the menu bar.
 
 > [!TIP]
-> To start Claudinion automatically whenever you log in, tick **Start at Login** in its menu.
+> To start Claudinion automatically whenever you log in, tick **Start Claudinion when you log in** in **Settings…**.
 
 ### Updating
 
@@ -138,22 +138,21 @@ Add this to the `hooks` section of `~/.claude/settings.json`. Repeat it for each
 |---|---|
 | **Click** it | Hops, with a heart |
 | **Double-click** it | Backflip |
-| **Drag** it | Dangles from your cursor; drop it anywhere, for example on top of a window |
+| **Drag** it | Dangles from your cursor; drop it anywhere, for example on top of a window. With a custom walking area, the area is outlined while you drag: orange when it's over the area, red when it's outside and will snap back |
 | **Right-click** it, or click the **menu bar icon** | Opens the menu |
 
 **The menu:**
 
 | Item | What it's for |
 |---|---|
-| **Hide / Show** | Hides the minion without quitting it |
+| **Status line** (top) | What the minion is doing right now, like "Claude: Editing files" or "Playing: Juggle". The dot is green while Claude is busy |
 | **Play ▸** | Starts any action now, including previews of every Claude reaction |
+| **Theme ▸** | **Classic** (orange, the default), **Charcoal** (dark with an orange glow) or **Shadow** (a dark silhouette), each with a little preview |
+| **Walking Area ▸** | **Anywhere** (the bottom of the screen), **Custom Area**, or **Draw New Area…**: drag a rectangle and it walks along that rectangle's bottom edge |
 | **Stay in Place** | It still animates, but stops walking around |
-| **Theme ▸** | **Classic** (orange, the default), **Charcoal** (dark with an orange glow) or **Shadow** (a dark silhouette) |
-| **Walking Area ▸** | **Anywhere** (the bottom of the screen), or **Draw New Area…**: drag a rectangle and it walks along that rectangle's bottom edge |
-| **React to Claude** | Pauses or resumes Claude reactions |
-| **Connect / Update / Disconnect from Claude…** | Adds, refreshes or removes the hooks |
-| **Start at Login** | Opens Claudinion automatically after you restart or log in |
-| **Settings…** | Theme, size, speed, light/dark, walking area, update checks, and which actions it does on its own |
+| **Hide / Show Pet** | Hides the minion without quitting it |
+| **Claude ▸** | Shows whether it's connected, plus **React to Claude** and **Connect / Update / Disconnect…** |
+| **Settings…** | Theme, size, speed, light/dark, walking area, start at login, update checks, and which actions it does on its own |
 | **Check for Updates… / Update to vX.Y.Z…** | Checks GitHub for a new version, or installs one that's available |
 
 Your settings (size, appearance, walking area, chosen actions) are saved and come back every time it starts.

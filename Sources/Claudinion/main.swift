@@ -978,6 +978,7 @@ final class PetView: NSView {
     // Click to hop, double-click for a backflip, drag to move.
     var onClick: ((Int) -> Void)?
     var onDrag: ((Bool) -> Void)?
+    var onDragMove: (() -> Void)?
     private var grab = NSPoint.zero
     private var start = NSPoint.zero
     private var moved = false
@@ -991,7 +992,7 @@ final class PetView: NSView {
     override func mouseDragged(with event: NSEvent) {
         let p = NSEvent.mouseLocation
         if !moved && hypot(p.x - start.x, p.y - start.y) > 3 { moved = true; onDrag?(true) }
-        if moved { window?.setFrameOrigin(NSPoint(x: p.x - grab.x, y: p.y - grab.y)) }
+        if moved { window?.setFrameOrigin(NSPoint(x: p.x - grab.x, y: p.y - grab.y)); onDragMove?() }
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -1047,9 +1048,35 @@ final class AreaPickerView: NSView {
     override func keyDown(with event: NSEvent) { if event.keyCode == 53 { onDone?(nil) } }
 }
 
+/// The walking area drawn as a dashed outline with a solid floor; red when the pet is outside it.
+final class AreaOutlineView: NSView {
+    var inside = true { didSet { if inside != oldValue { needsDisplay = true } } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let color = inside ? rgb(0.85, 0.47, 0.34) : NSColor.systemRed
+        let rect = bounds.insetBy(dx: 3, dy: 3)
+        let box = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
+        color.withAlphaComponent(0.10).setFill()
+        box.fill()
+        box.lineWidth = 2.5
+        box.setLineDash([8, 5], count: 2, phase: 0)
+        color.setStroke()
+        box.stroke()
+        let floor = NSBezierPath()
+        floor.move(to: NSPoint(x: rect.minX + 6, y: rect.minY))
+        floor.line(to: NSPoint(x: rect.maxX - 6, y: rect.minY))
+        floor.lineWidth = 4
+        floor.lineCapStyle = .round
+        floor.stroke()
+        let label = inside ? "Walking area" : "Outside the walking area"
+        label.draw(at: NSPoint(x: rect.minX + 10, y: rect.maxY - 22),
+                   withAttributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: color])
+    }
+}
+
 // MARK: - Pet
 
-final class Pet: NSObject {
+final class Pet: NSObject, NSMenuDelegate {
     let window: NSWindow
     let view = PetView(frame: NSRect(origin: .zero, size: canvasSize))
 
@@ -1096,6 +1123,7 @@ final class Pet: NSObject {
     var updating = false
     var areaLabel: NSTextField?
     var pickerWindows: [NSWindow] = []
+    var outlineWindow: NSWindow?
     var walkArea: NSRect? = {
         guard let saved = UserDefaults.standard.string(forKey: "walkArea") else { return nil }
         let r = NSRectFromString(saved)
@@ -1136,8 +1164,15 @@ final class Pet: NSObject {
         view.onDrag = { [weak self] down in
             guard let self = self else { return }
             self.dragging = down
-            if !down { self.posX = self.window.frame.origin.x; self.keepInArea() }
+            if down {
+                self.showAreaOutline()
+            } else {
+                self.posX = self.window.frame.origin.x
+                self.keepInArea()
+                self.hideAreaOutline(after: 0.2)
+            }
         }
+        view.onDragMove = { [weak self] in self?.updateAreaOutline() }
         view.menu = makeMenu()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = menuBarIcon()
@@ -1179,17 +1214,29 @@ final class Pet: NSObject {
 
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = self
         menus.append(menu)
-        func item(_ title: String, _ action: Selector, _ key: String = "", in m: NSMenu) {
+        @discardableResult
+        func item(_ title: String, _ action: Selector?, _ symbol: String? = nil, _ key: String = "", in m: NSMenu) -> NSMenuItem {
             let it = NSMenuItem(title: title, action: action, keyEquivalent: key)
             it.target = self
+            if let symbol = symbol { it.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
             m.addItem(it)
+            return it
+        }
+        func submenu(_ title: String, _ symbol: String, _ sub: NSMenu, in m: NSMenu) {
+            let it = item(title, nil, symbol, in: m)
+            sub.delegate = self
+            it.submenu = sub
         }
 
-        item("Hide Pet", #selector(toggleVisible), in: menu)
+        // What the minion is doing right now (kept up to date each time the menu opens).
+        let status = item("", nil, "circle.fill", in: menu)
+        status.tag = Pet.statusTag
+        status.isEnabled = false
         menu.addItem(.separator())
 
-        // Every action in one place: free play by category, then Claude's reactions.
+        // The minion
         let play = NSMenu()
         func section(_ title: String, _ acts: [Act]) {
             if !play.items.isEmpty { play.addItem(.separator()) }
@@ -1203,38 +1250,91 @@ final class Pet: NSObject {
         }
         for c in Act.categories { section(c.name, c.acts) }
         section("Claude Reactions (automatic)", Act.claude)
-        let playItem = NSMenuItem(title: "Play", action: nil, keyEquivalent: "")
-        playItem.submenu = play
-        menu.addItem(playItem)
-        item("Stay in Place", #selector(toggleStill(_:)), in: menu)
+        submenu("Play", "play.circle", play, in: menu)
+
+        let themeMenu = NSMenu()
+        for name in themes { item(name, #selector(themeChanged(_:)), in: themeMenu).image = themeSwatch(name) }
+        submenu("Theme", "paintpalette", themeMenu, in: menu)
 
         let area = NSMenu()
-        item("Anywhere", #selector(clearArea), in: area)
-        item("Custom Area", #selector(useCustomArea), in: area)
+        item("Anywhere", #selector(clearArea), "rectangle.bottomthird.inset.filled", in: area)
+        item("Custom Area", #selector(useCustomArea), "rectangle.dashed", in: area)
         area.addItem(.separator())
-        item("Draw New Area…", #selector(pickArea), in: area)
-        let areaItem = NSMenuItem(title: "Walking Area", action: nil, keyEquivalent: "")
-        areaItem.submenu = area
-        menu.addItem(areaItem)
-        let themeMenu = NSMenu()
-        for name in themes { item(name, #selector(themeChanged(_:)), in: themeMenu) }
-        let themeItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
-        themeItem.submenu = themeMenu
-        menu.addItem(themeItem)
+        item("Draw New Area…", #selector(pickArea), "pencil.and.outline", in: area)
+        submenu("Walking Area", "figure.walk", area, in: menu)
+
+        item("Stay in Place", #selector(toggleStill(_:)), "pin", in: menu)
+        item("Hide Pet", #selector(toggleVisible), "eye.slash", in: menu)
         menu.addItem(.separator())
 
-        item("React to Claude", #selector(toggleReact(_:)), in: menu)
-        item("Connect to Claude…", #selector(toggleClaudeHooks), in: menu)
+        // Claude
+        let claude = NSMenu()
+        let connection = item("", nil, nil, in: claude)
+        connection.tag = Pet.connectionTag
+        connection.isEnabled = false
+        claude.addItem(.separator())
+        item("React to Claude", #selector(toggleReact(_:)), "bolt", in: claude)
+        item("Connect to Claude…", #selector(toggleClaudeHooks), "link", in: claude)
+        submenu("Claude", "sparkles", claude, in: menu)
         menu.addItem(.separator())
 
-        item("Start at Login", #selector(toggleLogin), in: menu)
-        item("Settings…", #selector(openSettings), ",", in: menu)
-        item("Check for Updates…", #selector(updateMenuClicked), in: menu)
-        item("About Claudinion", #selector(openAbout), in: menu)
+        // App
+        item("Settings…", #selector(openSettings), "gearshape", ",", in: menu)
+        item("Check for Updates…", #selector(updateMenuClicked), "arrow.down.circle", in: menu)
+        item("About Claudinion", #selector(openAbout), "info.circle", in: menu)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        let quit = NSMenuItem(title: "Quit Claudinion", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
+        menu.addItem(quit)
         return menu
     }
+
+    static let statusTag = 101
+    static let connectionTag = 102
+
+    /// A one-line description of what the minion is up to, for the top of the menu.
+    func statusText() -> String {
+        func claudeDoing(_ a: Act) -> String {
+            let what = a.title.components(separatedBy: "– ").last ?? a.title
+            return "Claude: " + what.prefix(1).uppercased() + what.dropFirst()
+        }
+        if !window.isVisible { return "Hidden" }
+        if dragging { return "Being carried" }
+        if reactToClaude, let l = loop { return claudeDoing(l) }
+        if transient && Act.claude.contains(act) { return claudeDoing(act) }
+        return act == .idle ? "Resting" : "Playing: \(act.title)"
+    }
+
+    /// A tiny minion in a theme's colours, for the Theme menu.
+    func themeSwatch(_ name: String) -> NSImage {
+        let img = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
+            let saved = theme
+            theme = name
+            defer { theme = saved }
+            let s: CGFloat = 1.5
+            let rows = ["..########..", "..#.####.#..", "############", "############",
+                        "..########..", "..########..", "..#.#..#.#..", "..#.#..#.#.."]
+            let top = (18 - CGFloat(rows.count) * s) / 2
+            func fill(_ color: NSColor, dx: CGFloat = 0, dy: CGFloat = 0, _ match: Character) {
+                color.setFill()
+                for (r, row) in rows.enumerated() {
+                    for (c, ch) in row.enumerated() where ch == match {
+                        NSRect(x: CGFloat(c) * s + dx, y: top + CGFloat(r) * s + dy, width: s, height: s).fill()
+                    }
+                }
+            }
+            if name != "Classic" {
+                for (dx, dy) in [(-0.6, 0.0), (0.6, 0.0), (0.0, -0.6), (0.0, 0.6)] { fill(outlineColor, dx: CGFloat(dx), dy: CGFloat(dy), "#") }
+            }
+            fill(name == "Classic" ? rgb(0.85, 0.47, 0.34) : orange, "#")
+            eyeColor.setFill()
+            for c in [3, 8] { NSRect(x: CGFloat(c) * s, y: top + s, width: s, height: s).fill() }
+            return true
+        }
+        return img
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) { refreshMenus() }
 
     @objc func openAbout() {
         NSWorkspace.shared.open(URL(string: "https://github.com/tarek-89/Claudinion")!)
@@ -1269,6 +1369,15 @@ final class Pet: NSObject {
         themePicker?.selectItem(withTitle: theme)
         for menu in menus {
             for item in allItems(menu) {
+                if item.tag == Pet.statusTag {
+                    item.title = statusText()
+                    let dot = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)?
+                        .withSymbolConfiguration(.init(paletteColors: [loop != nil && reactToClaude ? .systemGreen : .secondaryLabelColor]))
+                    item.image = dot
+                }
+                if item.tag == Pet.connectionTag {
+                    item.title = outdated ? "Connection needs an update" : connected ? "Connected to Claude Code" : "Not connected"
+                }
                 switch item.action {
                 case #selector(toggleReact(_:)): item.state = reactToClaude ? .on : .off
                 case #selector(toggleStill(_:)): item.state = stayStill ? .on : .off
@@ -1279,7 +1388,9 @@ final class Pet: NSObject {
                 case #selector(themeChanged(_:)): item.state = item.title == theme ? .on : .off
                 case #selector(updateMenuClicked):
                     item.title = updating ? "Updating…" : availableUpdate.map { "Update to v\($0.version)…" } ?? "Check for Updates…"
-                case #selector(toggleVisible): item.title = window.isVisible ? "Hide Pet" : "Show Pet"
+                case #selector(toggleVisible):
+                    item.image = NSImage(systemSymbolName: window.isVisible ? "eye.slash" : "eye", accessibilityDescription: nil)
+                    item.title = window.isVisible ? "Hide Pet" : "Show Pet"
                 case #selector(toggleClaudeHooks):
                     item.title = outdated ? "Update Claude Connection…" : connected ? "Disconnect from Claude…" : "Connect to Claude…"
                 default: break
@@ -1675,6 +1786,48 @@ final class Pet: NSObject {
         UserDefaults.standard.set(NSStringFromRect(rect), forKey: "walkArea")
         UserDefaults.standard.set(NSStringFromRect(rect), forKey: "lastWalkArea")
         areaChanged()
+        showAreaOutline()
+        hideAreaOutline(after: 1.5)
+    }
+
+    /// Shows the custom walking area (if there is one) while the pet is being dragged.
+    func showAreaOutline() {
+        guard let area = walkArea else { return }
+        let frame = area.insetBy(dx: -3, dy: -3)
+        let w = outlineWindow ?? {
+            let w = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.hasShadow = false
+            w.ignoresMouseEvents = true
+            w.level = .floating
+            w.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+            w.contentView = AreaOutlineView(frame: NSRect(origin: .zero, size: frame.size))
+            return w
+        }()
+        outlineWindow = w
+        w.setFrame(frame, display: true)
+        w.alphaValue = 1
+        w.orderFrontRegardless()
+        window.orderFrontRegardless()      // keep the pet above the outline
+        updateAreaOutline()
+    }
+
+    func updateAreaOutline() {
+        guard let area = walkArea, let view = outlineWindow?.contentView as? AreaOutlineView else { return }
+        let feet = NSPoint(x: window.frame.minX + (bodyX + 6) * U, y: window.frame.minY)
+        view.inside = area.insetBy(dx: -1, dy: -1).contains(feet)
+    }
+
+    func hideAreaOutline(after delay: TimeInterval) {
+        guard let w = outlineWindow else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self, !self.dragging else { return }
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.35
+                w.animator().alphaValue = 0
+            }, completionHandler: { if !self.dragging { w.orderOut(nil) } })
+        }
     }
 
     /// Switches back to the most recently drawn area, or asks for one if there is none.
