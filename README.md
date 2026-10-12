@@ -136,7 +136,7 @@ Add this to the `hooks` section of `~/.claude/settings.json`. Repeat it for each
 
 | You do | Claudinion does |
 |---|---|
-| **Click** it | Hops, with a heart |
+| **Click** it | Hops with a heart, or does your chosen click action, and plays your click sound |
 | **Double-click** it | Backflip |
 | **Drag** it | Dangles from your cursor; drop it anywhere, for example on top of a window. With a custom walking area, the area is outlined while you drag: orange when it's over the area, red when it's outside and will snap back |
 | **Right-click** it, or click the **menu bar icon** | Opens the menu |
@@ -149,11 +149,15 @@ Add this to the `hooks` section of `~/.claude/settings.json`. Repeat it for each
 | **Play ▸** | Starts any action now, including previews of every Claude reaction |
 | **Theme ▸** | **Classic** (orange, the default), **Charcoal** (dark with an orange glow) or **Shadow** (a dark silhouette), each with a little preview |
 | **Walking Area ▸** | **Anywhere** (the bottom of the screen), **Custom Area**, or **Draw New Area…**: drag a rectangle and it walks along that rectangle's bottom edge |
+| **Click Action ▸** | What a single click does: **Default** (hop with a heart), **Random**, or any of the 29 actions |
+| **Click Sound ▸** | **Off**, **Random**, one of your own sounds, or a built-in macOS sound. Picking one plays a preview |
 | **Stay in Place** | It still animates, but stops walking around |
 | **Hide / Show Pet** | Hides the minion without quitting it |
 | **Claude ▸** | Shows whether it's connected, plus **React to Claude** and **Connect / Update / Disconnect…** |
-| **Settings…** | Theme, size, speed, light/dark, walking area, start at login, update checks, and which actions it does on its own |
+| **Settings…** | Theme, size, speed, click action, click sound and volume, light/dark, walking area, start at login, update checks, and which actions it does on its own |
 | **Check for Updates… / Update to vX.Y.Z…** | Checks GitHub for a new version, or installs one that's available |
+
+**Click sounds:** the default is macOS's **Pop**. To use your own, choose **Click Sound ▸ Open Sounds Folder…** and drop in `.mp3`, `.wav`, `.m4a`, `.aiff` or `.caf` files. They appear under **My Sounds** straight away. The folder is `~/Library/Application Support/Claudinion/Sounds`, and you can set the volume in **Settings…**.
 
 Your settings (size, appearance, walking area, chosen actions) are saved and come back every time it starts.
 

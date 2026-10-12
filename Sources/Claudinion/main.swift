@@ -1164,7 +1164,10 @@ final class Pet: NSObject, NSMenuDelegate {
 
         view.onClick = { [weak self] count in
             guard let self = self else { return }
-            if count >= 2 { self.interrupt([.backflip]) } else { self.heartTicks = 24; self.interrupt([.hop]) }
+            if count >= 2 { self.interrupt([.backflip]); return }
+            if self.clickAction == "Default" { self.heartTicks = 24 }   // the heart belongs to the default hop only
+            self.interrupt([self.clickAct()])
+            self.playClickSound()
         }
         view.onDrag = { [weak self] down in
             guard let self = self else { return }
@@ -1268,6 +1271,12 @@ final class Pet: NSObject, NSMenuDelegate {
         item("Draw New Area…", #selector(pickArea), "pencil.and.outline", in: area)
         submenu("Walking Area", "figure.walk", area, in: menu)
 
+        let clickActions = NSMenu()
+        fillClickActionMenu(clickActions)
+        submenu("Click Action", "hand.tap", clickActions, in: menu)
+        let sounds = NSMenu()
+        soundMenus.append(sounds)
+        submenu("Click Sound", "speaker.wave.2", sounds, in: menu)
         item("Stay in Place", #selector(toggleStill(_:)), "pin", in: menu)
         item("Hide Pet", #selector(toggleVisible), "eye.slash", in: menu)
         menu.addItem(.separator())
@@ -1339,7 +1348,10 @@ final class Pet: NSObject, NSMenuDelegate {
         return img
     }
 
-    func menuNeedsUpdate(_ menu: NSMenu) { refreshMenus() }
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if soundMenus.contains(where: { $0 === menu }) { fillSoundMenu(menu) }
+        refreshMenus()
+    }
 
     @objc func openAbout() {
         NSWorkspace.shared.open(URL(string: "https://github.com/tarek-89/Claudinion")!)
@@ -1390,6 +1402,7 @@ final class Pet: NSObject, NSMenuDelegate {
                 case #selector(useCustomArea):
                     item.state = walkArea == nil ? .off : .on
                 case #selector(toggleLogin): item.state = startsAtLogin ? .on : .off
+                case #selector(clickActionChosen(_:)): item.state = item.representedObject as? String == clickAction ? .on : .off
                 case #selector(themeChanged(_:)): item.state = item.title == theme ? .on : .off
                 case #selector(updateMenuClicked):
                     item.title = updating ? "Updating…" : availableUpdate.map { "Update to v\($0.version)…" } ?? "Check for Updates…"
@@ -1489,6 +1502,7 @@ final class Pet: NSObject, NSMenuDelegate {
 
     @objc func openSettings() {
         if settingsWindow == nil { settingsWindow = makeSettingsWindow() }
+        fillSoundPopup()
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
@@ -1597,7 +1611,27 @@ final class Pet: NSObject, NSMenuDelegate {
         version.textColor = .secondaryLabelColor
         let updateRow = NSStackView(views: [autoUpdate, NSButton(title: "Check Now", target: self, action: #selector(checkNow)), version])
 
-        let stack = NSStackView(views: [login, updateRow, heading("Size"), sizeRow, heading("Speed"), speedRow, heading("Appearance"), themeBlock,
+        let soundPicker = NSPopUpButton(frame: .zero, pullsDown: false)
+        soundPicker.target = self
+        soundPicker.action = #selector(soundPopupChanged(_:))
+        soundPopup = soundPicker
+        let volume = NSSlider(value: Double(soundVolume), minValue: 0, maxValue: 1, target: self, action: #selector(volumeChanged(_:)))
+        volume.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        let actionPicker = NSPopUpButton(frame: .zero, pullsDown: false)
+        actionPicker.menu?.removeAllItems()
+        if let m = actionPicker.menu { fillClickActionMenu(m) }
+        actionPopup = actionPicker
+        if let item = actionPicker.itemArray.first(where: { $0.representedObject as? String == clickAction }) { actionPicker.select(item) }
+        let actionRow = NSStackView(views: [NSTextField(labelWithString: "Action:"), actionPicker])
+
+        let soundRow = NSStackView(views: [
+            NSTextField(labelWithString: "Sound:"), soundPicker,
+            NSImageView(image: NSImage(systemSymbolName: "speaker.wave.1", accessibilityDescription: nil)!), volume,
+            NSButton(title: "Open Sounds Folder", target: self, action: #selector(openSoundsFolder)),
+        ])
+
+        let stack = NSStackView(views: [login, updateRow, heading("Size"), sizeRow, heading("Speed"), speedRow,
+                                        heading("When clicked"), actionRow, soundRow, heading("Appearance"), themeBlock,
                                         heading("Where it walks"), areaRow, heading("Actions it does on its own"), grid, buttons, hint])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -1605,6 +1639,7 @@ final class Pet: NSObject, NSMenuDelegate {
         stack.setCustomSpacing(24, after: updateRow)
         stack.setCustomSpacing(24, after: sizeRow)
         stack.setCustomSpacing(24, after: speedRow)
+        stack.setCustomSpacing(24, after: soundRow)
         stack.setCustomSpacing(24, after: themeBlock)
         stack.setCustomSpacing(24, after: areaRow)
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
@@ -1612,6 +1647,157 @@ final class Pet: NSObject, NSMenuDelegate {
         w.setContentSize(stack.fittingSize)
         w.center()
         return w
+    }
+
+    // MARK: Click action
+
+    var clickAction = UserDefaults.standard.string(forKey: "clickAction") ?? "Default"   // "Default", "Random" or an action
+    var actionPopup: NSPopUpButton?
+
+    /// What a single click makes the pet do.
+    func clickAct() -> Act {
+        switch clickAction {
+        case "Default": return .hop
+        case "Random": return Act.freePlay.randomElement()!
+        default: return Act(rawValue: clickAction) ?? .hop
+        }
+    }
+
+    func setClickAction(_ value: String) {
+        clickAction = value
+        UserDefaults.standard.set(value, forKey: "clickAction")
+        if let popup = actionPopup, let item = popup.itemArray.first(where: { $0.representedObject as? String == value }) {
+            popup.select(item)
+        }
+        refreshMenus()
+    }
+
+    @objc func clickActionChosen(_ sender: NSMenuItem) {
+        if let value = sender.representedObject as? String { setClickAction(value) }
+    }
+
+    /// Default and Random first, then every action by category. Used for both the menu and the settings popup.
+    func fillClickActionMenu(_ menu: NSMenu) {
+        func add(_ title: String, _ value: String, _ symbol: String? = nil) {
+            let it = NSMenuItem(title: title, action: #selector(clickActionChosen(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = value
+            if let symbol = symbol { it.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
+            menu.addItem(it)
+        }
+        add("Default (Hop with a Heart)", "Default", "heart")
+        add("Random", "Random", "shuffle")
+        for c in Act.categories {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: c.name))
+            c.acts.forEach { add($0.title, $0.rawValue) }
+        }
+    }
+
+    // MARK: Click sounds
+
+    /// Sounds the user adds here show up under "My Sounds"; macOS's built-in sounds are always offered too.
+    let soundsDir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/Claudinion/Sounds")
+    var clickSound = UserDefaults.standard.string(forKey: "clickSound") ?? "Pop"   // "Off", "Random" or a sound name
+    var soundVolume: Float = {
+        let saved = UserDefaults.standard.object(forKey: "soundVolume") as? Double
+        return Float(saved ?? 0.6)
+    }()
+    var currentSound: NSSound?
+    var soundMenus: [NSMenu] = []
+    var soundPopup: NSPopUpButton?
+
+    func soundFiles(in dir: URL, types: [String]) -> [(name: String, url: URL)] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { types.contains($0.pathExtension.lowercased()) }
+            .map { ($0.deletingPathExtension().lastPathComponent, $0) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    var mySounds: [(name: String, url: URL)] {
+        try? FileManager.default.createDirectory(at: soundsDir, withIntermediateDirectories: true)
+        return soundFiles(in: soundsDir, types: ["mp3", "wav", "m4a", "aiff", "aif", "caf"])
+    }
+
+    var macSounds: [(name: String, url: URL)] {
+        soundFiles(in: URL(fileURLWithPath: "/System/Library/Sounds"), types: ["aiff"])
+    }
+
+    func playClickSound() {
+        guard clickSound != "Off" else { return }
+        let all = mySounds + macSounds
+        let pick = clickSound == "Random" ? all.randomElement() : all.first { $0.name == clickSound }
+        guard let url = pick?.url, let sound = NSSound(contentsOf: url, byReference: true) else { return }
+        currentSound?.stop()
+        currentSound = sound
+        sound.volume = soundVolume
+        sound.play()
+    }
+
+    func setClickSound(_ name: String) {
+        clickSound = name
+        UserDefaults.standard.set(name, forKey: "clickSound")
+        playClickSound()                  // preview the choice
+        soundPopup?.selectItem(withTitle: name)
+    }
+
+    @objc func soundChosen(_ sender: NSMenuItem) {
+        if let name = sender.representedObject as? String { setClickSound(name) }
+    }
+
+    @objc func soundPopupChanged(_ sender: NSPopUpButton) {
+        if let name = sender.selectedItem?.representedObject as? String { setClickSound(name) }
+    }
+
+    @objc func volumeChanged(_ sender: NSSlider) {
+        soundVolume = Float(sender.doubleValue)
+        UserDefaults.standard.set(sender.doubleValue, forKey: "soundVolume")
+    }
+
+    @objc func openSoundsFolder() {
+        try? FileManager.default.createDirectory(at: soundsDir, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(soundsDir)
+    }
+
+    /// Rebuilt each time it opens, so files added to the Sounds folder appear straight away.
+    func fillSoundMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+        func add(_ title: String, _ value: String, _ symbol: String? = nil) {
+            let it = NSMenuItem(title: title, action: #selector(soundChosen(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = value
+            it.state = clickSound == value ? .on : .off
+            if let symbol = symbol { it.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
+            menu.addItem(it)
+        }
+        add("Off", "Off", "speaker.slash")
+        add("Random", "Random", "shuffle")
+        let mine = mySounds
+        if !mine.isEmpty {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: "My Sounds"))
+            mine.forEach { add($0.name, $0.name) }
+        }
+        menu.addItem(.separator())
+        menu.addItem(.sectionHeader(title: "macOS Sounds"))
+        macSounds.forEach { add($0.name, $0.name) }
+        menu.addItem(.separator())
+        let open = NSMenuItem(title: "Open Sounds Folder…", action: #selector(openSoundsFolder), keyEquivalent: "")
+        open.target = self
+        open.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+        menu.addItem(open)
+    }
+
+    func fillSoundPopup() {
+        guard let popup = soundPopup else { return }
+        popup.removeAllItems()
+        let names = ["Off", "Random"] + mySounds.map(\.name) + macSounds.map(\.name)
+        for name in names {
+            popup.addItem(withTitle: name)
+            popup.lastItem?.representedObject = name
+        }
+        popup.selectItem(withTitle: clickSound)
     }
 
     // MARK: Start at login
