@@ -961,12 +961,17 @@ func drawProp(_ ctx: CGContext, _ prop: Prop) {
 final class PetView: NSView {
     var frameToDraw = Frame()
     var clones: [(Pose, CGPoint)] = []
+    /// Left and right edges of the walking area in view coordinates; nothing is drawn outside them.
+    var clipX: ClosedRange<CGFloat>?
 
     override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.clear(bounds)
+        if let clip = clipX {
+            ctx.clip(to: CGRect(x: clip.lowerBound, y: bounds.minY, width: clip.upperBound - clip.lowerBound, height: bounds.height))
+        }
         ctx.setShouldAntialias(false)
         ctx.scaleBy(x: U, y: U)
         ctx.translateBy(x: bodyX, y: bodyY)
@@ -2096,6 +2101,12 @@ final class Pet: NSObject, NSMenuDelegate {
         }
 
         if !dragging { move(fr) }
+        if let area = walkArea, !dragging {
+            let lo = area.minX - window.frame.minX, hi = area.maxX - window.frame.minX
+            view.clipX = lo < hi ? lo...hi : nil
+        } else {
+            view.clipX = nil
+        }
         view.frameToDraw = fr
         view.needsDisplay = true
     }
